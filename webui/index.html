@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PS5 Longshot Builder</title>
+<style>
+  :root { --bg:#111317; --panel:#1a1d23; --line:#2a2f38; --text:#d8dde5; --dim:#8a93a2; --acc:#4cc38a; --err:#e5534b; --warn:#d9a441; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
+  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; font-weight:600; }
+  header span { color:var(--dim); }
+  main { padding:16px 20px; display:grid; gap:16px; grid-template-columns: 340px 1fr; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-width:0; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 10px; font-weight:600; }
+  button { background:#232833; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; cursor:pointer; font:inherit; width:100%; text-align:left; }
+  button:hover:not(:disabled) { border-color:var(--acc); }
+  button:disabled { opacity:.45; cursor:default; }
+  button.primary { background:#1f3a2d; border-color:#2f6b4c; }
+  button.stop { border-color:#6b2f2f; }
+  .btns { display:grid; gap:6px; }
+  .btns small { color:var(--dim); display:block; font-size:12px; }
+  dl { margin:0; display:grid; grid-template-columns: auto 1fr; gap:4px 10px; font-size:13px; }
+  dt { color:var(--dim); } dd { margin:0; word-break:break-all; }
+  #state { font-weight:600; }
+  .ok { color:var(--acc); } .bad { color:var(--err); } .run { color:var(--warn); }
+  pre { margin:0; height:calc(100vh - 110px); min-height:300px; overflow:auto; background:#0b0d10; border-radius:6px; padding:10px; font:12px/1.4 ui-monospace, monospace; white-space:pre-wrap; word-break:break-all; }
+  .side { display:grid; gap:16px; align-content:start; }
+  select { width:100%; background:#232833; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
+  .relbar { display:grid; grid-template-columns: 1fr auto; gap:6px; }
+  .relbar button { width:auto; }
+  .msg { color:var(--dim); font-size:12px; margin-top:6px; }
+</style>
+</head>
+<body>
+<header><h1>PS5 Longshot Builder</h1><span id="sub">&hellip; &rarr; PPSA99025</span><span id="state">&hellip;</span></header>
+<main>
+  <div class="side">
+    <section>
+      <h2>Aktionen</h2>
+      <div class="btns">
+        <button data-stage="check">Auf Updates prüfen<small>neuestes Release gegen Builder und Title</small></button>
+        <button class="primary" data-stage="all">Alles bauen<small>Builder aktualisieren und Build</small></button>
+        <button data-stage="update">Builder aktualisieren<small>AppImage laden, prüfen, entpacken, --check</small></button>
+        <button data-stage="build">Build<small>.nup lesen, Lift, Kompilieren, Linken, Title</small></button>
+        <button data-stage="deploy">Auf die PS5 kopieren<small>FTP nach /data/homebrew/PPSA99025</small></button>
+        <button class="stop" id="stop">Abbrechen</button>
+      </div>
+    </section>
+    <section>
+      <h2>Konsole</h2>
+      <select id="model"></select>
+      <div class="msg">Das Title wird für ein Modell gebaut. Base läuft auch auf der Pro (im Modus der Base). Gilt ab dem nächsten Build.</div>
+    </section>
+    <section>
+      <h2>Release</h2>
+      <div class="relbar"><select id="rel"></select><button id="relload" title="Liste neu laden">&#8635;</button></div>
+      <div id="relmsg" class="msg">&hellip;</div>
+    </section>
+    <section>
+      <h2>Stand</h2>
+      <dl>
+        <dt>Spiel</dt><dd id="nup">&ndash;</dd>
+        <dt>Title</dt><dd id="out">&ndash;</dd>
+        <dt>Release</dt><dd id="ref">&ndash;</dd>
+        <dt>Builder</dt><dd id="builder">&ndash;</dd>
+        <dt>Letzter Build</dt><dd id="build">&ndash;</dd>
+        <dt>Updates</dt><dd id="upd">noch nicht geprüft</dd>
+        <dt>Frei</dt><dd id="free">&ndash;</dd>
+        <dt>PS5 (FTP)</dt><dd id="ps5">&ndash;</dd>
+      </dl>
+    </section>
+  </div>
+  <section>
+    <pre id="log"></pre>
+  </section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+let next = 0, lastLog = null, modelsShown = false;
+async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
+function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
+async function refresh() {
+  try {
+    const s = await api('/api/status');
+    const st = $('#state');
+    if (s.running) { st.textContent = 'läuft: ' + s.stage + ' seit ' + fmt(s.started); st.className = 'run'; }
+    else if (s.code === 0) { st.textContent = s.stage + ': fertig ' + fmt(s.ended); st.className = 'ok'; }
+    else if (s.code !== null) { st.textContent = s.stage + ': Fehler (Exit ' + s.code + ')'; st.className = 'bad'; }
+    else { st.textContent = 'bereit'; st.className = ''; }
+    document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
+    $('#rel').disabled = s.running; $('#model').disabled = s.running;
+    $('#stop').disabled = !s.running;
+    $('#sub').textContent = s.repo + ' → PPSA99025';
+    if (!modelsShown) {
+      modelsShown = true;
+      Object.entries(s.models).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#model').appendChild(o); });
+    }
+    if (document.activeElement !== $('#model')) $('#model').value = s.model;
+    $('#nup').textContent = s.nup || 'keine .nup gefunden';
+    $('#ref').textContent = s.ref;
+    $('#builder').textContent = s.builder || 'noch nicht geladen';
+    $('#out').textContent = s.title;
+    $('#build').textContent = s.build ? (s.build.tag || '?') + ', ' + (s.build.model || '?') + ', ' + s.build.time : 'noch keiner';
+    $('#free').textContent = s.free_config + ' GB (/config), ' + (s.free_out ?? '?') + ' GB (Ausgabe)';
+    $('#ps5').textContent = s.ps5 ? s.ps5 + (s.upload_nup ? ', mit .nup' : '') : 'PS5_HOST nicht gesetzt';
+    const u = s.updates, ud = $('#upd');
+    if (u) { ud.textContent = (u.update ? 'es gibt etwas zu tun' : 'alles aktuell') + ' (gebaut: ' + (u.built || 'nichts') +
+      ', gewählt: ' + (u.want || u.latest || '?') + ', geprüft ' + u.time + ')'; ud.className = u.update ? 'run' : 'ok'; }
+    if (s.log !== lastLog) { lastLog = s.log; next = 0; $('#log').textContent = ''; }
+  } catch (e) { $('#state').textContent = 'keine Verbindung'; }
+  try {
+    const l = await api('/api/log?from=' + next);
+    if (l.text) {
+      const pre = $('#log');
+      const atEnd = pre.scrollTop + pre.clientHeight >= pre.scrollHeight - 30;
+      if (l.next < next) pre.textContent = '';
+      pre.textContent += l.text;
+      if (pre.textContent.length > 800000) pre.textContent = pre.textContent.slice(-600000);
+      if (atEnd) pre.scrollTop = pre.scrollHeight;
+    }
+    next = l.next;
+  } catch (e) {}
+}
+document.querySelectorAll('button[data-stage]').forEach(b => b.onclick = async () => {
+  const r = await api('/api/run?stage=' + b.dataset.stage, { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  next = 0; lastLog = null; refresh();
+});
+async function loadReleases(refresh) {
+  const sel = $('#rel'), msg = $('#relmsg');
+  try {
+    const r = await api('/api/releases' + (refresh ? '?refresh=1' : ''));
+    const opts = [['latest', 'latest: neuestes Release']].concat(r.releases.map(x => {
+      const notes = [x.kind === 'pre' ? 'Vorab' : '', x.date, x.appimage === false ? 'ohne Linux-AppImage' : ''].filter(Boolean);
+      return [x.tag, x.tag + (notes.length ? ' (' + notes.join(', ') + ')' : '')];
+    }));
+    if (!opts.some(o => o[0] === r.ref)) opts.push([r.ref, r.ref]);
+    sel.innerHTML = '';
+    opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
+    sel.value = r.ref;
+    msg.textContent = r.error ? r.error : r.releases.length + ' Releases (' + r.source + '). Gebaut wird die Auswahl bei „Alles bauen“.';
+  } catch (e) { msg.textContent = 'Release-Liste nicht ladbar'; }
+}
+$('#rel').onchange = async () => {
+  const r = await api('/api/ref?ref=' + encodeURIComponent($('#rel').value), { method: 'POST' });
+  if (!r.ok) { alert(r.msg); loadReleases(false); }
+  refresh();
+};
+$('#model').onchange = async () => {
+  const r = await api('/api/model?model=' + encodeURIComponent($('#model').value), { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  refresh();
+};
+$('#relload').onclick = () => loadReleases(true);
+$('#stop').onclick = () => api('/api/stop', { method: 'POST' }).then(refresh);
+loadReleases(false); refresh(); setInterval(refresh, 2000);
+</script>
+</body>
+</html>
