@@ -55,6 +55,11 @@
       <div class="msg">Das Title wird für ein Modell gebaut. Base läuft auch auf der Pro (im Modus der Base). Gilt ab dem nächsten Build.</div>
     </section>
     <section>
+      <h2>Spielsprache</h2>
+      <select id="lang"></select>
+      <div class="msg">Steht in language.txt im Title. Gilt ab dem nächsten Build oder Deploy, ohne neu zu kompilieren.</div>
+    </section>
+    <section>
       <h2>Release</h2>
       <div class="relbar"><select id="rel"></select><button id="relload" title="Liste neu laden">&#8635;</button></div>
       <div id="relmsg" class="msg">&hellip;</div>
@@ -91,14 +96,18 @@ async function refresh() {
     else if (s.code !== null) { st.textContent = s.stage + ': Fehler (Exit ' + s.code + ')'; st.className = 'bad'; }
     else { st.textContent = 'bereit'; st.className = ''; }
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
-    $('#rel').disabled = s.running; $('#model').disabled = s.running;
+    $('#rel').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → PPSA99025';
     if (!modelsShown) {
       modelsShown = true;
       Object.entries(s.models).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#model').appendChild(o); });
     }
+    if (!$('#lang').options.length) {
+      Object.entries(s.languages).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#lang').appendChild(o); });
+    }
     if (document.activeElement !== $('#model')) $('#model').value = s.model;
+    if (document.activeElement !== $('#lang')) $('#lang').value = s.language;
     $('#nup').textContent = s.nup || 'keine .nup gefunden';
     $('#ref').textContent = s.ref;
     $('#builder').textContent = s.builder || 'noch nicht geladen';
@@ -151,6 +160,11 @@ $('#rel').onchange = async () => {
 };
 $('#model').onchange = async () => {
   const r = await api('/api/model?model=' + encodeURIComponent($('#model').value), { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  refresh();
+};
+$('#lang').onchange = async () => {
+  const r = await api('/api/language?language=' + encodeURIComponent($('#lang').value), { method: 'POST' });
   if (!r.ok) alert(r.msg);
   refresh();
 };
