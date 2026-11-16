@@ -161,10 +161,36 @@ stage_update() {
         d=${d%/}
         if [[ -d $d && $(basename "$d") != "$ver" ]]; then rm -rf "$d"; fi
     done
+    ensure_zbic "$BUILDERS/$ver" "$tag"
     echo "  Builder: $ver  ($(du -sh "$BUILDERS/$ver" | cut -f1))"
     log "Teile des Builders pruefen (--cli --check, ohne Spiel)"
     "$BUILDERS/$ver/AppRun" --cli --check --work "$WORK" 2>&1 | readable ||
         die "der Builder laeuft in diesem Container nicht (--check)"
+}
+
+# ZBIC: die main einer .nup von Firmware 22+ ist ZBIC-komprimiert. nx2/nup.py entpackt sie mit nx2/zbic.py, das sich
+# third_party/zbic/zbic.so beim ersten Gebrauch mit einem Host-clang baut. Die AppImage (Stand v0.1.0) hat dafuer weder
+# zbic.so noch die Quellen (ps5/builder/make_kit.py nimmt nx2, host und third_party/a64-kit ins Kit, nicht third_party/zbic),
+# und der Build bricht in "Reading the game's program" ab. Hier wird zbic.so aus den Quellen desselben Release-Tags mit
+# gcc gebaut und dorthin gelegt, wo zbic.py sie zuerst sucht (liegt sie dort, baut zbic.py nichts).
+ensure_zbic() {
+    local dir=$1 tag=$2 py zdir tmp f
+    py=$(find "$dir" -path '*/src/nx2/zbic.py' -print -quit 2>/dev/null)
+    [[ -n $py ]] || { echo "  (keine nx2/zbic.py im Builder: ZBIC-Hilfe nicht noetig)"; return 0; }
+    zdir="$(dirname "$(dirname "$py")")/third_party/zbic"
+    [[ -f $zdir/zbic.so ]] && return 0
+    echo "  zbic.so fehlt im Builder: baue sie aus third_party/zbic von $REPO@$tag"
+    tmp=$(mktemp -d)
+    for f in zstd.c zstd.h zstd_errors.h zbic_api.c; do
+        "${CURL[@]}" -o "$tmp/$f" "https://raw.githubusercontent.com/$REPO/$tag/third_party/zbic/$f" ||
+            { rm -rf "$tmp"; die "third_party/zbic/$f von $tag nicht ladbar"; }
+    done
+    mkdir -p "$zdir"
+    gcc -O2 -shared -fPIC -DZSTD_ZBIC_SUPPORT=1 -I "$tmp" -o "$zdir/zbic.so.new" "$tmp/zstd.c" "$tmp/zbic_api.c" ||
+        { rm -rf "$tmp"; die "zbic.so nicht gebaut"; }
+    mv "$zdir/zbic.so.new" "$zdir/zbic.so"
+    rm -rf "$tmp"
+    echo "  zbic.so gebaut: $zdir/zbic.so"
 }
 
 find_nup() {
@@ -236,6 +262,7 @@ stage_build() {
     local run nup game args
     run=$(apprun) || true
     if [[ -z $run ]]; then stage_update; run=$(apprun); fi
+    ensure_zbic "$BUILDERS/$(builder_tag)" "$(builder_tag)"
     out_mounted
     mkdir -p "$OUT_DIR" "$WORK"
     nup=$(find_nup)

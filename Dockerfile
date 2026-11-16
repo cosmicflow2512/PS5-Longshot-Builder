@@ -1,11 +1,12 @@
 # ps5-longshot-builder: baut heydemoura/PS5_Longshot (PS5-Title PPSA99025) aus der eigenen .nup, ohne Fenster.
 # Compiler (llvm-mingws LLVM mit PS5-Ziel), Python, Kit und ps5-native-tool bringt die offizielle Builder-AppImage mit
-# (zur Laufzeit nach /config geladen, gegen ihre .sha256 geprueft). Das Image braucht nur Download, Web-UI und FTP.
+# (zur Laufzeit nach /config geladen, gegen ihre .sha256 geprueft). Das Image braucht nur Download, Web-UI und FTP,
+# plus gcc fuer zbic.so, die der AppImage fehlt (scripts/build.sh ensure_zbic).
 FROM ubuntu:24.04
 
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        ca-certificates curl git python3 zlib1g libstdc++6 file \
+        ca-certificates curl git python3 zlib1g libstdc++6 file gcc libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 ENV CONFIG_DIR=/config \
