@@ -20,9 +20,15 @@ TITLE_ID = os.environ.get("TITLE_ID", "PPSA99025")
 REPO = os.environ.get("LONGSHOT_REPO", "heydemoura/PS5_Longshot")
 STAGES = ("check", "all", "update", "build", "deploy")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
+# Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt
+LANGUAGES = {"de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
+             "it": "Italiano", "es": "Español", "es-419": "Español (Latinoamérica)", "pt-BR": "Português (Brasil)",
+             "nl": "Nederlands", "pl": "Polski", "ru": "Русский", "ja": "日本語", "ko": "한국어", "zh-Hans": "简体中文",
+             "zh-Hant": "繁體中文"}
 HERE = os.path.dirname(os.path.abspath(__file__))
 REF_FILE = os.path.join(CONFIG, "ref")
 MODEL_FILE = os.path.join(CONFIG, "model")
+LANGUAGE_FILE = os.path.join(CONFIG, "language")
 TAG_RE = re.compile(r"^[A-Za-z0-9._+-]{1,80}$")
 RELEASE_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.?(\d+)?)?$")
 releases_cache = {}
@@ -94,6 +100,11 @@ def current_ref():
 def current_model():
     m = read_line(MODEL_FILE) or os.environ.get("MODEL", "pro")
     return m if m in MODELS else "pro"
+
+
+def current_language():
+    l = read_line(LANGUAGE_FILE) or os.environ.get("LANGUAGE", "de")
+    return l if l in LANGUAGES else ""
 
 
 def release_order(tag):
@@ -172,6 +183,8 @@ def status():
     s["ref"] = current_ref()
     s["model"] = current_model()
     s["models"] = MODELS
+    s["language"] = current_language()
+    s["languages"] = LANGUAGES
     s["builder"] = read_line(os.path.join(CONFIG, "builder", "current"))
     title = os.path.join(OUT, TITLE_ID)
     s["title"] = title
@@ -264,6 +277,13 @@ class H(http.server.BaseHTTPRequestHandler):
             if not save_choice(MODEL_FILE, model):
                 return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
             return self.send(200, json.dumps({"ok": True, "model": model}))
+        if u.path == "/api/language":
+            lang = q.get("language", [""])[0]
+            if lang not in LANGUAGES:
+                return self.send(400, json.dumps({"ok": False, "msg": "unbekannte Sprache"}))
+            if not save_choice(LANGUAGE_FILE, lang):
+                return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
+            return self.send(200, json.dumps({"ok": True, "language": lang}))
         if u.path == "/api/stop":
             return self.send(200, json.dumps({"ok": stop()}))
         self.send(404, '{"error":"not found"}')

@@ -26,6 +26,11 @@ REF=${LONGSHOT_REF:-latest}
 if [[ -s $CONFIG_DIR/ref ]]; then REF=$(tr -d ' \r\n' < "$CONFIG_DIR/ref"); fi
 MODEL=${MODEL:-pro}
 if [[ -s $CONFIG_DIR/model ]]; then MODEL=$(tr -d ' \r\n' < "$CONFIG_DIR/model"); fi
+# Spielsprache: language.txt im Title-Ordner (host/nn_applet.c desired_language: die erste Zeile, die keine Leerzeile und
+# kein Kommentar ist und einen der 16 Codes nennt; fehlt die Datei, Englisch (US)). Leer: keine language.txt.
+LANGUAGE=${LANGUAGE-de}
+if [[ -s $CONFIG_DIR/language ]]; then LANGUAGE=$(tr -d ' \r\n' < "$CONFIG_DIR/language"); fi
+LANGUAGES="en-US en-GB fr fr-CA de it es es-419 pt-BR nl pl ru ja ko zh-Hans zh-Hant"
 BUILDERS="$CONFIG_DIR/builder"
 WORK="$CONFIG_DIR/work"
 TITLE="$OUT_DIR/$TITLE_ID"
@@ -44,6 +49,19 @@ case $MODEL in
     base|pro) ;;
     *) die "MODEL=$MODEL unbekannt (base = PS5/PS5 Slim, pro = PS5 Pro)" ;;
 esac
+if [[ -n $LANGUAGE && " $LANGUAGES " != *" $LANGUAGE "* ]]; then
+    die "LANGUAGE=$LANGUAGE unbekannt ($LANGUAGES)"
+fi
+
+# language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c).
+write_language() {
+    [[ -n $LANGUAGE && -d $TITLE ]] || return 0
+    {
+        printf '# The game%ss language. Change the line below to one of the codes listed here, save, and start the game again.\n\n%s\n\n' "'" "$LANGUAGE"
+        printf '# %s\n' $LANGUAGES
+    } > "$TITLE/language.txt"
+    echo "  Spielsprache: $LANGUAGE ($TITLE/language.txt)"
+}
 
 # Speicherbudget in MB: das kleinere von freiem RAM und Speicherlimit des Containers.
 cgroup_limit_mb() {
@@ -285,6 +303,7 @@ stage_build() {
         die "der Build ist abgebrochen (Meldung oben). Ein neuer Build setzt fort, wo er war (work bleibt unter $WORK)"
     fi
     [[ -f $TITLE/eboot.bin && -f $TITLE/image.bin ]] || die "eboot.bin oder image.bin fehlt nach dem Build in $TITLE"
+    write_language
     printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s"}\n' "$(builder_tag)" "$MODEL" "$(date '+%d.%m.%Y %H:%M')" \
         "$(basename "${nup:-}")" > "$CONFIG_DIR/build-info.json"
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
@@ -295,6 +314,7 @@ stage_build() {
 
 stage_deploy() {
     [[ -f $TITLE/eboot.bin ]] || die "kein Title unter $TITLE (erst build)"
+    write_language
     local args=(--dist "$TITLE")
     if [[ ${UPLOAD_NUP:-false} == true ]]; then
         local nup; nup=$(find_nup)
@@ -329,7 +349,7 @@ free_gb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print int($4/1024/1024)}'; }
 stage=${1:-all}
 mkdir -p "$CONFIG_DIR" "$HOME"
 IMAGE_REV=${IMAGE_REV:-unbekannt}
-echo "Image: ${IMAGE_REV:0:7}  Ref: $REF  Konsole: $MODEL  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
+echo "Image: ${IMAGE_REV:0:7}  Ref: $REF  Konsole: $MODEL  Sprache: ${LANGUAGE:-Spielstandard}  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
 echo "Frei: $(free_gb "$CONFIG_DIR") GB unter $CONFIG_DIR, $(free_gb "$OUT_DIR") GB unter $OUT_DIR (Upstream: rund 6 GB fuer den Build, 1 GB fuer den Builder)"
 if [[ $stage == build || $stage == all ]] && (( $(budget_mb) < 8192 )); then
     echo "Hinweis: weniger als 8 GB Speicher frei bzw. erlaubt. Upstream nennt rund 10 GB, der Lift allein haelt etwa 6 GB."

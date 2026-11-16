@@ -69,6 +69,18 @@ In der Web-UI unter **Konsole** (gespeichert in `/config/model`, geht vor `MODEL
 
 Ein Build für das andere Modell dauert nur Sekunden: die Build-Dateien unter `/config/work` bleiben.
 
+## Spielsprache
+
+In der Web-UI unter **Spielsprache** (gespeichert in `/config/language`, geht vor `LANGUAGE`, Standard `de`). `build.sh`
+schreibt den Code nach `PPSA99025/language.txt`, im selben Format, das das Spiel beim ersten Start selbst anlegt. Das
+Spiel liest die erste Zeile, die kein Kommentar ist und einen seiner 16 Codes nennt; ohne Datei spielt es Englisch (US)
+(`host/nn_applet.c`, `desired_language`). Die Datei wird bei jedem Build und jedem Deploy geschrieben, eine andere
+Sprache braucht also kein neues Kompilieren: Sprache wählen, „Auf die PS5 kopieren".
+
+Im Spiel gibt es außerdem die Zeile „Game language" im Menü (Touchpad-Klick + Options, Reiter Gameplay), die
+`language.txt` neu schreibt. Ob das Title auf der Konsole in seinen Ordner schreiben kann (es liest ihn als `/app0`), ist
+ungeprüft. Ein späteres Deploy mit geänderter Sprache überschreibt die Wahl aus dem Spiel.
+
 ## Auf der PS5
 
 1. „Auf die PS5 kopieren" (oder `AUTO_DEPLOY=true`) legt `PPSA99025` nach `/data/homebrew/PPSA99025`.
@@ -95,6 +107,7 @@ nächsten Lauf fort.
 | --- | --- | --- |
 | `NUP_FILE` | leer | Pfad der `.nup` im Container. Leer: erste `.nup` mit `0400486024DEC000` im Namen unter `/nup` |
 | `MODEL` | `pro` | `pro` oder `base`, solange in der Web-UI nichts gewählt ist |
+| `LANGUAGE` | `de` | Spielsprache (`language.txt`), solange in der Web-UI nichts gewählt ist; leer: keine Datei, das Spiel nimmt Englisch (US) |
 | `LONGSHOT_REF` | `latest` | `latest` = neuestes Release, oder ein Tag (`v0.1.0`) |
 | `LONGSHOT_REPO` | `heydemoura/PS5_Longshot` | GitHub-Repository der Releases |
 | `PS5_HOST` | leer | IP der PS5 |
