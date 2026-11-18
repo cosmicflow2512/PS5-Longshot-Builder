@@ -1,9 +1,12 @@
-"""Das Title (PPSA99025) per FTP auf die PS5 (Standardport 2121) und optional die .nup dazu.
+"""Das Title (PPSA99025 Longshot, PPSA99026 HeyListen) per FTP auf die PS5 (Standardport 2121) und optional die .nup dazu.
 
     deploy.py --dist <output/PPSA99025> [--upload-nup <spiel.nup>]
 
 Umgebung: PS5_HOST, PS5_FTP_PORT (2121), PS5_TITLE_DIR (/data/homebrew/PPSA99025),
-PS5_NUP_PATH (/data/eglantineps5/roms/oot.nup): Ziel fuer UPLOAD_NUP.
+PS5_NUP_PATH (/data/eglantineps5/roms/oot.nup): Ziel fuer UPLOAD_NUP. GAME_NAME (Longshot) fuer die Meldungen,
+DEPLOY_MANIFEST ($CONFIG_DIR/deploy-manifest.json) je Projekt (scripts/build.sh).
+
+PS5_HeyListen sucht die .nup an denselben Orten (host/ps5/win32_ps5.c stammt aus PS5_Longshot).
 
 Longshot liest die Spieldaten auf der Konsole direkt aus der .nup und sucht sie an festen Orten (host/ps5/win32_ps5.c von
 PS5_Longshot): /data/eglantineps5/roms/<Name des Dumps>.nup, /data/eglantineps5/roms/oot.nup,
@@ -101,7 +104,8 @@ def main():
     port = int(os.environ.get("PS5_FTP_PORT", "2121"))
     title_dir = os.environ.get("PS5_TITLE_DIR", "/data/homebrew/PPSA99025").rstrip("/")
     nup_path = os.environ.get("PS5_NUP_PATH", DEFAULT_NUP).strip() or DEFAULT_NUP
-    manifest_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "deploy-manifest.json")
+    manifest_path = os.environ.get("DEPLOY_MANIFEST") or os.path.join(os.environ.get("CONFIG_DIR", "/config"), "deploy-manifest.json")
+    game = os.environ.get("GAME_NAME", "Longshot")
 
     try:
         manifest = json.load(open(manifest_path))
@@ -160,15 +164,15 @@ def main():
                 sys.exit("  .nup auf der PS5 hat nicht die erwartete Groesse")
     found = [p for p in KNOWN_NUPS if remote_size(f, p)]
     if found:
-        print("  .nup fuer Longshot gefunden: %s" % found[0], flush=True)
+        print("  .nup fuer %s gefunden: %s" % (game, found[0]), flush=True)
     else:
-        print("  ACHTUNG: keine .nup an den Orten, an denen Longshot sucht:\n    %s\n"
+        print("  ACHTUNG: keine .nup an den Orten, an denen %s sucht:\n    %s\n"
               "  Laut Upstream-README gehoert sie nach %s (UPLOAD_NUP=true kopiert sie dorthin).\n"
               "  Eine vorhandene .nup verschieben:\n"
               "    curl -Q 'MKD /data/eglantineps5' -Q 'MKD /data/eglantineps5/roms' -Q 'RNFR <alter Pfad>' -Q 'RNTO %s' ftp://%s:%d/"
-              % ("\n    ".join(KNOWN_NUPS), DEFAULT_NUP, DEFAULT_NUP, host, port), flush=True)
+              % (game, "\n    ".join(KNOWN_NUPS), DEFAULT_NUP, DEFAULT_NUP, host, port), flush=True)
     f.quit()
-    print("  Deploy fertig: %s. Longshot vom Startbildschirm oder dem Homebrew-Launcher starten." % title_dir, flush=True)
+    print("  Deploy fertig: %s. %s vom Startbildschirm oder dem Homebrew-Launcher starten." % (title_dir, game), flush=True)
 
 
 if __name__ == "__main__":

@@ -57,6 +57,25 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-ps5-longshot-buil
 Danach unter Docker → Add Container das Template `ps5-longshot-builder` wählen, `PS5_HOST` eintragen und die Web-UI
 öffnen (Port 8486).
 
+## Projekt: Longshot oder HeyListen
+
+In der Web-UI unter **Projekt** (gespeichert in `/config/project`, geht vor `PROJECT`, Standard `longshot`):
+
+| | `longshot` | `heylisten` |
+| --- | --- | --- |
+| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) |
+| AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` |
+| Title | `PPSA99025` | `PPSA99026` |
+| Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` |
+| Builder, Build-Dateien, Stand | direkt unter `/config` (wie bisher) | unter `/config/heylisten` |
+
+Beide Titles können nebeneinander auf der PS5 liegen. Konsole und Spielsprache gelten für beide Projekte. Die `.nup`
+sucht PS5_HeyListen an denselben Orten wie Longshot (`host/ps5/win32_ps5.c` stammt von dort).
+
+PS5_HeyListen ist **experimentell**: HeyListens Engine mit dem PS5-Port von PS5_Longshot, bisher auf keiner Konsole
+gestartet. Seine Builder-AppImage baut der Workflow `ps5-builder-release.yml` dort. Solange es kein Release mit
+AppImage gibt, meldet „Auf Updates prüfen“ für `heylisten` einen Fehler.
+
 ## Konsole
 
 In der Web-UI unter **Konsole** (gespeichert in `/config/model`, geht vor `MODEL`). Das Title wird für ein Modell gebaut
@@ -108,7 +127,9 @@ nächsten Lauf fort.
 | `NUP_FILE` | leer | Pfad der `.nup` im Container. Leer: erste `.nup` mit `0400486024DEC000` im Namen unter `/nup` |
 | `MODEL` | `pro` | `pro` oder `base`, solange in der Web-UI nichts gewählt ist |
 | `LANGUAGE` | `de` | Spielsprache (`language.txt`), solange in der Web-UI nichts gewählt ist; leer: keine Datei, das Spiel nimmt Englisch (US) |
+| `PROJECT` | `longshot` | `longshot` oder `heylisten`, solange in der Web-UI nichts gewählt ist |
 | `LONGSHOT_REF` | `latest` | `latest` = neuestes Release, oder ein Tag (`v0.1.0`) |
+| `HEYLISTEN_REF` | `latest` | wie `LONGSHOT_REF`, für `heylisten` |
 | `LONGSHOT_REPO` | `heydemoura/PS5_Longshot` | GitHub-Repository der Releases |
 | `PS5_HOST` | leer | IP der PS5 |
 | `PS5_FTP_PORT` | `2121` | FTP-Port |

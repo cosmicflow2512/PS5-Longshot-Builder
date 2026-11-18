@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# ps5-longshot-builder: baut das PS5-Title von heydemoura/PS5_Longshot (PPSA99025) mit der offiziellen Builder-AppImage
-# des gewaehlten Releases, ohne Fenster.
+# ps5-longshot-builder: baut das PS5-Title des gewaehlten Projekts mit dessen offizieller Builder-AppImage des gewaehlten
+# Releases, ohne Fenster:
+#   longshot   heydemoura/PS5_Longshot      LongshotPS5Builder-<tag>-x86_64.AppImage    PPSA99025
+#   heylisten  cosmicflow2512/PS5_HeyListen  HeyListenPS5Builder-<tag>-x86_64.AppImage   PPSA99026
+# Das Projekt kommt aus der Web-UI ($CONFIG_DIR/project), sonst aus PROJECT (Standard longshot). Builder, Build-Dateien,
+# Release-Wahl und Stand liegen je Projekt getrennt: longshot wie bisher direkt unter $CONFIG_DIR, heylisten unter
+# $CONFIG_DIR/heylisten. Konsole und Sprache gelten fuer beide.
 #
 #   build.sh check    neuestes Release gegen den geladenen Builder und das gebaute Title
 #   build.sh update   AppImage des gewaehlten Releases (Standard: neuestes) laden, gegen ihre .sha256 pruefen, entpacken
@@ -16,14 +21,22 @@ set -euo pipefail
 CONFIG_DIR=${CONFIG_DIR:-/config}
 NUP_DIR=${NUP_DIR:-/nup}
 OUT_DIR=${OUT_DIR:-/output}
-REPO=${LONGSHOT_REPO:-heydemoura/PS5_Longshot}
+PROJECT=${PROJECT:-longshot}
+if [[ -s $CONFIG_DIR/project ]]; then PROJECT=$(tr -d ' \r\n' < "$CONFIG_DIR/project"); fi
+case $PROJECT in
+    longshot)
+        REPO=${LONGSHOT_REPO:-heydemoura/PS5_Longshot} NAME=LongshotPS5Builder TITLE_ID=${TITLE_ID:-PPSA99025}
+        STATE=$CONFIG_DIR REF=${LONGSHOT_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot ;;
+    heylisten)
+        # (PS5_HeyListen: HeyListens Engine mit dem PS5-Port von PS5_Longshot; die Quellen liegen dort unter engine/)
+        REPO=${HEYLISTEN_REPO:-cosmicflow2512/PS5_HeyListen} NAME=HeyListenPS5Builder TITLE_ID=PPSA99026
+        STATE=$CONFIG_DIR/heylisten REF=${HEYLISTEN_REF:-latest} SRC_PREFIX="engine/" GAME_NAME=HeyListen ;;
+    *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot oder heylisten)\n' "$PROJECT" >&2; exit 1 ;;
+esac
 GH="https://github.com/$REPO"
 API="https://api.github.com/repos/$REPO"
-NAME=LongshotPS5Builder
-TITLE_ID=${TITLE_ID:-PPSA99025}
-# Welches Release und welche Konsole: die Auswahl aus der Web-UI ($CONFIG_DIR/ref, $CONFIG_DIR/model), sonst die Variablen.
-REF=${LONGSHOT_REF:-latest}
-if [[ -s $CONFIG_DIR/ref ]]; then REF=$(tr -d ' \r\n' < "$CONFIG_DIR/ref"); fi
+# Welches Release und welche Konsole: die Auswahl aus der Web-UI ($STATE/ref, $CONFIG_DIR/model), sonst die Variablen.
+if [[ -s $STATE/ref ]]; then REF=$(tr -d ' \r\n' < "$STATE/ref"); fi
 MODEL=${MODEL:-pro}
 if [[ -s $CONFIG_DIR/model ]]; then MODEL=$(tr -d ' \r\n' < "$CONFIG_DIR/model"); fi
 # Spielsprache: language.txt im Title-Ordner (host/nn_applet.c desired_language: die erste Zeile, die keine Leerzeile und
@@ -31,8 +44,8 @@ if [[ -s $CONFIG_DIR/model ]]; then MODEL=$(tr -d ' \r\n' < "$CONFIG_DIR/model")
 LANGUAGE=${LANGUAGE-de}
 if [[ -s $CONFIG_DIR/language ]]; then LANGUAGE=$(tr -d ' \r\n' < "$CONFIG_DIR/language"); fi
 LANGUAGES="en-US en-GB fr fr-CA de it es es-419 pt-BR nl pl ru ja ko zh-Hans zh-Hant"
-BUILDERS="$CONFIG_DIR/builder"
-WORK="$CONFIG_DIR/work"
+BUILDERS="$STATE/builder"
+WORK="$STATE/work"
 TITLE="$OUT_DIR/$TITLE_ID"
 CURL=(curl -fsSL --retry 5 --retry-delay 10 --proto '=https')
 CURL_API=("${CURL[@]}" -H 'Accept: application/vnd.github+json')
@@ -144,7 +157,7 @@ apprun() {
 }
 built_field() {
     python3 -c 'import json,sys; print(json.load(open(sys.argv[1])).get(sys.argv[2], ""))' \
-        "$CONFIG_DIR/build-info.json" "$1" 2>/dev/null || true
+        "$STATE/build-info.json" "$1" 2>/dev/null || true
 }
 
 stage_update() {
@@ -200,7 +213,7 @@ ensure_zbic() {
     echo "  zbic.so fehlt im Builder: baue sie aus third_party/zbic von $REPO@$tag"
     tmp=$(mktemp -d)
     for f in zstd.c zstd.h zstd_errors.h zbic_api.c; do
-        "${CURL[@]}" -o "$tmp/$f" "https://raw.githubusercontent.com/$REPO/$tag/third_party/zbic/$f" ||
+        "${CURL[@]}" -o "$tmp/$f" "https://raw.githubusercontent.com/$REPO/$tag/${SRC_PREFIX}third_party/zbic/$f" ||
             { rm -rf "$tmp"; die "third_party/zbic/$f von $tag nicht ladbar"; }
     done
     mkdir -p "$zdir"
@@ -305,7 +318,7 @@ stage_build() {
     [[ -f $TITLE/eboot.bin && -f $TITLE/image.bin ]] || die "eboot.bin oder image.bin fehlt nach dem Build in $TITLE"
     write_language
     printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s"}\n' "$(builder_tag)" "$MODEL" "$(date '+%d.%m.%Y %H:%M')" \
-        "$(basename "${nup:-}")" > "$CONFIG_DIR/build-info.json"
+        "$(basename "${nup:-}")" > "$STATE/build-info.json"
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
         chown -R "$PUID:$PGID" "$TITLE" 2>/dev/null || echo "  Hinweis: Besitzer von $TITLE nicht auf $PUID:$PGID gesetzt"
     fi
@@ -322,7 +335,7 @@ stage_deploy() {
         args+=(--upload-nup "$nup")
     fi
     log "Deploy nach ${PS5_HOST:-?}:${PS5_FTP_PORT:-2121}/data/homebrew/$TITLE_ID"
-    PS5_TITLE_DIR="/data/homebrew/$TITLE_ID" python3 -u /app/scripts/deploy.py "${args[@]}"
+    PS5_TITLE_DIR="/data/homebrew/$TITLE_ID" GAME_NAME=$GAME_NAME DEPLOY_MANIFEST="$STATE/deploy-manifest.json" python3 -u /app/scripts/deploy.py "${args[@]}"
     log "Deploy fertig"
 }
 
@@ -335,21 +348,21 @@ stage_check() {
     want=$(appimage_version "${line#* }")
     have=$(builder_tag); built=$(built_field tag); built_model=$(built_field model)
     [[ -f $TITLE/eboot.bin ]] || built=""
-    printf '  %-28s %s\n' "Repository:" "$REPO" "Neuestes Release (latest):" "$latest" "Gewaehlt ($REF):" "$want" \
+    printf '  %-28s %s\n' "Projekt:" "$PROJECT ($TITLE_ID)" "Repository:" "$REPO" "Neuestes Release (latest):" "$latest" "Gewaehlt ($REF):" "$want" \
         "Builder im Container:" "${have:-keiner}" "Gebautes Title:" "${built:-keins}${built:+ ($built_model)}" \
         "Gewaehlte Konsole:" "$MODEL"
     [[ $built == "$want" && $built_model == "$MODEL" ]] || update=true
     if [[ $update == true ]]; then echo "  -> \"Alles bauen\" bringt das Title auf $want ($MODEL)."; else echo "  -> alles aktuell."; fi
     printf '{"time": "%s", "latest": "%s", "want": "%s", "builder": "%s", "built": "%s", "update": %s}\n' \
-        "$(date '+%d.%m.%Y %H:%M')" "$latest" "$want" "$have" "$built" "$update" > "$CONFIG_DIR/update-check.json"
+        "$(date '+%d.%m.%Y %H:%M')" "$latest" "$want" "$have" "$built" "$update" > "$STATE/update-check.json"
 }
 
 free_gb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print int($4/1024/1024)}'; }
 
 stage=${1:-all}
-mkdir -p "$CONFIG_DIR" "$HOME"
+mkdir -p "$CONFIG_DIR" "$STATE" "$HOME"
 IMAGE_REV=${IMAGE_REV:-unbekannt}
-echo "Image: ${IMAGE_REV:0:7}  Ref: $REF  Konsole: $MODEL  Sprache: ${LANGUAGE:-Spielstandard}  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
+echo "Image: ${IMAGE_REV:0:7}  Projekt: $PROJECT ($REPO, $TITLE_ID)  Ref: $REF  Konsole: $MODEL  Sprache: ${LANGUAGE:-Spielstandard}  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
 echo "Frei: $(free_gb "$CONFIG_DIR") GB unter $CONFIG_DIR, $(free_gb "$OUT_DIR") GB unter $OUT_DIR (Upstream: rund 6 GB fuer den Build, 1 GB fuer den Builder)"
 if [[ $stage == build || $stage == all ]] && (( $(budget_mb) < 8192 )); then
     echo "Hinweis: weniger als 8 GB Speicher frei bzw. erlaubt. Upstream nennt rund 10 GB, der Lift allein haelt etwa 6 GB."

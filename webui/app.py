@@ -16,8 +16,16 @@ CONFIG = os.environ.get("CONFIG_DIR", "/config")
 LOGS = os.path.join(CONFIG, "logs")
 PORT = int(os.environ.get("WEBUI_PORT", "8486"))
 OUT = os.environ.get("OUT_DIR", "/output")
-TITLE_ID = os.environ.get("TITLE_ID", "PPSA99025")
-REPO = os.environ.get("LONGSHOT_REPO", "heydemoura/PS5_Longshot")
+# Die Projekte, wie scripts/build.sh sie kennt: Repository, Name der Builder-AppImage, Title, eigener Ordner unter /config
+PROJECTS = {
+    "longshot": {"label": "Longshot (heydemoura/PS5_Longshot)", "repo": os.environ.get("LONGSHOT_REPO", "heydemoura/PS5_Longshot"),
+                 "appimage": "LongshotPS5Builder", "title_id": os.environ.get("TITLE_ID", "PPSA99025"), "state": CONFIG,
+                 "ref_env": "LONGSHOT_REF"},
+    "heylisten": {"label": "HeyListen (cosmicflow2512/PS5_HeyListen, experimentell)",
+                  "repo": os.environ.get("HEYLISTEN_REPO", "cosmicflow2512/PS5_HeyListen"), "appimage": "HeyListenPS5Builder",
+                  "title_id": "PPSA99026", "state": os.path.join(CONFIG, "heylisten"), "ref_env": "HEYLISTEN_REF"},
+}
+PROJECT_FILE = os.path.join(CONFIG, "project")
 STAGES = ("check", "all", "update", "build", "deploy")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
 # Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt
@@ -26,7 +34,6 @@ LANGUAGES = {"de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", 
              "nl": "Nederlands", "pl": "Polski", "ru": "Русский", "ja": "日本語", "ko": "한국어", "zh-Hans": "简体中文",
              "zh-Hant": "繁體中文"}
 HERE = os.path.dirname(os.path.abspath(__file__))
-REF_FILE = os.path.join(CONFIG, "ref")
 MODEL_FILE = os.path.join(CONFIG, "model")
 LANGUAGE_FILE = os.path.join(CONFIG, "language")
 TAG_RE = re.compile(r"^[A-Za-z0-9._+-]{1,80}$")
@@ -93,8 +100,21 @@ def read_line(path):
         return None
 
 
+def current_project():
+    p = read_line(PROJECT_FILE) or os.environ.get("PROJECT", "longshot")
+    return p if p in PROJECTS else "longshot"
+
+
+def project():
+    return PROJECTS[current_project()]
+
+
+def ref_file():
+    return os.path.join(project()["state"], "ref")
+
+
 def current_ref():
-    return read_line(REF_FILE) or os.environ.get("LONGSHOT_REF", "latest")
+    return read_line(ref_file()) or os.environ.get(project()["ref_env"], "latest")
 
 
 def current_model():
@@ -117,17 +137,18 @@ def fetch_releases():
     """Releases von GitHub (API: Datum, Vorab-Kennzeichen, ob eine Linux-AppImage dabei ist). Ohne API (ohne Token 60
     Abfragen je Stunde) die v-Tags aus git ls-remote; ob ein Tag eine AppImage hat, zeigt sich dann beim Laden."""
     found, source = {}, None
+    repo, appimage = project()["repo"], project()["appimage"]
     try:
-        headers = {"Accept": "application/vnd.github+json", "User-Agent": "ps5-longshot-builder"}
+        headers = {"Accept": "application/vnd.github+json", "User-Agent": "ps5-builder"}
         if os.environ.get("GITHUB_TOKEN"):
             headers["Authorization"] = "Bearer " + os.environ["GITHUB_TOKEN"]
-        req = urllib.request.Request("https://api.github.com/repos/%s/releases?per_page=100" % REPO, headers=headers)
+        req = urllib.request.Request("https://api.github.com/repos/%s/releases?per_page=100" % repo, headers=headers)
         with urllib.request.urlopen(req, timeout=15) as r:
             for rel in json.load(r):
                 tag = rel.get("tag_name") or ""
                 if rel.get("draft") or not TAG_RE.match(tag):
                     continue
-                has = any(re.fullmatch(r"LongshotPS5Builder-.*-x86_64\.AppImage", a.get("name", ""))
+                has = any(re.fullmatch(re.escape(appimage) + r"-.*-x86_64\.AppImage", a.get("name", ""))
                           for a in rel.get("assets", []))
                 found[tag] = {"tag": tag, "kind": "pre" if rel.get("prerelease") else "stable",
                               "date": (rel.get("published_at") or "")[:10], "appimage": has}
@@ -135,7 +156,7 @@ def fetch_releases():
     except Exception as e:
         api_error = str(e)
         try:
-            r = subprocess.run(["git", "ls-remote", "--tags", "--refs", "https://github.com/%s.git" % REPO],
+            r = subprocess.run(["git", "ls-remote", "--tags", "--refs", "https://github.com/%s.git" % repo],
                                capture_output=True, text=True, timeout=30)
             if r.returncode:
                 raise RuntimeError(r.stderr.strip()[:200])
@@ -154,13 +175,14 @@ def fetch_releases():
 
 
 def releases(force=False):
+    key = current_project()
     with lock:
-        c = releases_cache.get("r")
+        c = releases_cache.get(key)
         if not force and c and time.time() - c["time"] < 600:
             return c["data"]
     data = fetch_releases()
     with lock:
-        releases_cache["r"] = {"time": time.time(), "data": data}
+        releases_cache[key] = {"time": time.time(), "data": data}
     return data
 
 
@@ -179,17 +201,21 @@ def status():
     nup_dir = os.environ.get("NUP_DIR", "/nup")
     s["nup"] = os.environ.get("NUP_FILE") or next(iter(sorted(glob.glob(os.path.join(nup_dir, "*.nup")) +
                                                              glob.glob(os.path.join(nup_dir, "*", "*.nup")))), None)
-    s["repo"] = REPO
+    pr = project()
+    s["project"] = current_project()
+    s["projects"] = {k: v["label"] for k, v in PROJECTS.items()}
+    s["repo"] = pr["repo"]
+    s["title_id"] = pr["title_id"]
     s["ref"] = current_ref()
     s["model"] = current_model()
     s["models"] = MODELS
     s["language"] = current_language()
     s["languages"] = LANGUAGES
-    s["builder"] = read_line(os.path.join(CONFIG, "builder", "current"))
-    title = os.path.join(OUT, TITLE_ID)
+    s["builder"] = read_line(os.path.join(pr["state"], "builder", "current"))
+    title = os.path.join(OUT, pr["title_id"])
     s["title"] = title
-    s["build"] = read_json(os.path.join(CONFIG, "build-info.json")) if os.path.exists(os.path.join(title, "eboot.bin")) else None
-    s["updates"] = read_json(os.path.join(CONFIG, "update-check.json"))
+    s["build"] = read_json(os.path.join(pr["state"], "build-info.json")) if os.path.exists(os.path.join(title, "eboot.bin")) else None
+    s["updates"] = read_json(os.path.join(pr["state"], "update-check.json"))
     host = os.environ.get("PS5_HOST", "")
     s["ps5"] = "%s:%s" % (host, os.environ.get("PS5_FTP_PORT", "2121")) if host else ""
     s["upload_nup"] = os.environ.get("UPLOAD_NUP", "false") == "true"
@@ -202,6 +228,7 @@ def save_choice(path, value):
     with lock:
         if running():
             return False
+        os.makedirs(os.path.dirname(path), exist_ok=True)
         with open(path, "w") as fh:
             fh.write(value + "\n")
     return True
@@ -267,9 +294,16 @@ class H(http.server.BaseHTTPRequestHandler):
             ref = q.get("ref", [""])[0]
             if not TAG_RE.match(ref):
                 return self.send(400, json.dumps({"ok": False, "msg": "kein gueltiges Tag"}))
-            if not save_choice(REF_FILE, ref):
+            if not save_choice(ref_file(), ref):
                 return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
             return self.send(200, json.dumps({"ok": True, "ref": ref}))
+        if u.path == "/api/project":
+            p = q.get("project", [""])[0]
+            if p not in PROJECTS:
+                return self.send(400, json.dumps({"ok": False, "msg": "unbekanntes Projekt"}))
+            if not save_choice(PROJECT_FILE, p):
+                return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
+            return self.send(200, json.dumps({"ok": True, "project": p}))
         if u.path == "/api/model":
             model = q.get("model", [""])[0]
             if model not in MODELS:

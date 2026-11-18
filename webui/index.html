@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PS5 Longshot Builder</title>
+<title>PS5 Builder (Longshot / HeyListen)</title>
 <style>
   :root { --bg:#111317; --panel:#1a1d23; --line:#2a2f38; --text:#d8dde5; --dim:#8a93a2; --acc:#4cc38a; --err:#e5534b; --warn:#d9a441; }
   * { box-sizing:border-box; }
@@ -35,7 +35,7 @@
 </style>
 </head>
 <body>
-<header><h1>PS5 Longshot Builder</h1><span id="sub">&hellip; &rarr; PPSA99025</span><span id="state">&hellip;</span></header>
+<header><h1>PS5 Builder</h1><span id="sub">&hellip;</span><span id="state">&hellip;</span></header>
 <main>
   <div class="side">
     <section>
@@ -45,9 +45,14 @@
         <button class="primary" data-stage="all">Alles bauen<small>Builder aktualisieren und Build</small></button>
         <button data-stage="update">Builder aktualisieren<small>AppImage laden, prüfen, entpacken, --check</small></button>
         <button data-stage="build">Build<small>.nup lesen, Lift, Kompilieren, Linken, Title</small></button>
-        <button data-stage="deploy">Auf die PS5 kopieren<small>FTP nach /data/homebrew/PPSA99025</small></button>
+        <button data-stage="deploy">Auf die PS5 kopieren<small id="deploysub">FTP nach /data/homebrew/&hellip;</small></button>
         <button class="stop" id="stop">Abbrechen</button>
       </div>
+    </section>
+    <section>
+      <h2>Projekt</h2>
+      <select id="project"></select>
+      <div class="msg">Longshot baut PPSA99025, HeyListen PPSA99026: beide können nebeneinander auf der PS5 liegen. Builder, Build-Dateien und Release-Wahl sind je Projekt getrennt; Konsole und Sprache gelten für beide.</div>
     </section>
     <section>
       <h2>Konsole</h2>
@@ -84,7 +89,7 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
-let next = 0, lastLog = null, modelsShown = false;
+let next = 0, lastLog = null, modelsShown = false, shownProject = null;
 async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
 function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
 async function refresh() {
@@ -96,9 +101,16 @@ async function refresh() {
     else if (s.code !== null) { st.textContent = s.stage + ': Fehler (Exit ' + s.code + ')'; st.className = 'bad'; }
     else { st.textContent = 'bereit'; st.className = ''; }
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
-    $('#rel').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
+    $('#rel').disabled = s.running; $('#project').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
-    $('#sub').textContent = s.repo + ' → PPSA99025';
+    $('#sub').textContent = s.repo + ' → ' + s.title_id;
+    $('#deploysub').textContent = 'FTP nach /data/homebrew/' + s.title_id;
+    if (!$('#project').options.length) {
+      Object.entries(s.projects).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; $('#project').appendChild(o); });
+    }
+    if (document.activeElement !== $('#project')) $('#project').value = s.project;
+    if (shownProject !== null && shownProject !== s.project) loadReleases(false);
+    shownProject = s.project;
     if (!modelsShown) {
       modelsShown = true;
       Object.entries(s.models).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#model').appendChild(o); });
@@ -156,6 +168,11 @@ async function loadReleases(refresh) {
 $('#rel').onchange = async () => {
   const r = await api('/api/ref?ref=' + encodeURIComponent($('#rel').value), { method: 'POST' });
   if (!r.ok) { alert(r.msg); loadReleases(false); }
+  refresh();
+};
+$('#project').onchange = async () => {
+  const r = await api('/api/project?project=' + encodeURIComponent($('#project').value), { method: 'POST' });
+  if (!r.ok) alert(r.msg);
   refresh();
 };
 $('#model').onchange = async () => {
