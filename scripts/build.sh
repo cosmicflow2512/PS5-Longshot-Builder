@@ -34,7 +34,7 @@ case $PROJECT in
         STATE=$CONFIG_DIR/heylisten REF=${HEYLISTEN_REF:-latest} SRC_PREFIX="engine/" GAME_NAME=HeyListen ;;
     fork)
         # (der eigene Fork von PS5_Longshot mit den offenen Pull Requests, Title PPSA99198 nach PR #35)
-        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot} NAME=LongshotPS5Builder TITLE_ID=PPSA99198
+        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot_Cosi} NAME=LongshotPS5Builder TITLE_ID=PPSA99198
         STATE=$CONFIG_DIR/fork REF=${FORK_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot-Fork ;;
     *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot, heylisten oder fork)\n' "$PROJECT" >&2; exit 1 ;;
 esac

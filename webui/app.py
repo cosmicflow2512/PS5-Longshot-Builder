@@ -25,8 +25,8 @@ PROJECTS = {
                   "repo": os.environ.get("HEYLISTEN_REPO", "cosmicflow2512/PS5_HeyListen"), "appimage": "HeyListenPS5Builder",
                   "title_id": "PPSA99026", "state": os.path.join(CONFIG, "heylisten"), "ref_env": "HEYLISTEN_REF"},
 }
-PROJECTS["fork"] = {"label": "Longshot-Fork (cosmicflow2512/PS5_Longshot, mit den offenen PRs)",
-                    "repo": os.environ.get("FORK_REPO", "cosmicflow2512/PS5_Longshot"), "appimage": "LongshotPS5Builder",
+PROJECTS["fork"] = {"label": "Longshot-Fork (cosmicflow2512/PS5_Longshot_Cosi, mit den offenen PRs)",
+                    "repo": os.environ.get("FORK_REPO", "cosmicflow2512/PS5_Longshot_Cosi"), "appimage": "LongshotPS5Builder",
                     "title_id": "PPSA99198", "state": os.path.join(CONFIG, "fork"), "ref_env": "FORK_REF"}
 PROJECT_FILE = os.path.join(CONFIG, "project")
 STAGES = ("check", "all", "update", "build", "deploy", "saves-status")

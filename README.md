@@ -63,7 +63,7 @@ In der Web-UI unter **Projekt** (gespeichert in `/config/project`, geht vor `PRO
 
 | | `longshot` | `heylisten` | `fork` |
 | --- | --- | --- | --- |
-| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) | [cosmicflow2512/PS5_Longshot](https://github.com/cosmicflow2512/PS5_Longshot) |
+| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) | [cosmicflow2512/PS5_Longshot_Cosi](https://github.com/cosmicflow2512/PS5_Longshot_Cosi) |
 | AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` | `LongshotPS5Builder-<tag>-x86_64.AppImage` |
 | Title | `PPSA99025` | `PPSA99026` | `PPSA99198` |
 | Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` | `FORK_REF` |
