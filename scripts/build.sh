@@ -12,6 +12,7 @@
 #   build.sh build    AppRun --cli (ps5/builder/pipeline.py): .nup lesen, Lift, Kompilieren, Linken, Title nach $OUT_DIR
 #   build.sh deploy   Title per FTP nach /data/homebrew/PPSA99025 auf der PS5 (scripts/deploy.py)
 #   build.sh all      update + build (+ deploy bei AUTO_DEPLOY=true)
+#   build.sh saves-status | saves-copy | saves-restore   Spielstaende auf der PS5 (scripts/saves.py)
 #
 # Die AppImage wird entpackt statt gemountet (in Docker gibt es kein FUSE). Ihr AppRun startet mit "--cli" die
 # pipeline.py des Releases mit deren Optionen (ps5/builder/package.py), und die bringt Python, clang/ld.lld (mit PS5-Ziel),
@@ -377,5 +378,16 @@ case $stage in
         stage_build
         if [[ ${AUTO_DEPLOY:-false} == true ]]; then stage_deploy; fi
         ;;
-    *) die "unbekannte Stufe: $stage (check|update|build|deploy|all)" ;;
+    # Spielstaende auf der PS5 (scripts/saves.py): lesen und vergleichen, von einem Title in den anderen kopieren, ein Backup
+    # zurueckspielen. SAVES_FROM / SAVES_TO: longshot oder heylisten; SAVES_BACKUP: Name eines Backups unter /config/saves/backups
+    saves-status) log "Spielstaende auf der PS5 lesen"; python3 -u /app/scripts/saves.py status ;;
+    saves-copy)
+        log "Spielstaende kopieren: ${SAVES_FROM:-?} -> ${SAVES_TO:-?}"
+        python3 -u /app/scripts/saves.py copy --from "${SAVES_FROM:-}" --to "${SAVES_TO:-}"
+        python3 -u /app/scripts/saves.py status ;;
+    saves-restore)
+        log "Backup zurueckspielen: ${SAVES_BACKUP:-?} -> ${SAVES_TO:-?}"
+        python3 -u /app/scripts/saves.py restore --backup "${SAVES_BACKUP:-}" --to "${SAVES_TO:-}"
+        python3 -u /app/scripts/saves.py status ;;
+    *) die "unbekannte Stufe: $stage (check|update|build|deploy|all|saves-status|saves-copy|saves-restore)" ;;
 esac

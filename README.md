@@ -76,6 +76,26 @@ PS5_HeyListen ist **experimentell**: HeyListens Engine mit dem PS5-Port von PS5_
 gestartet. Seine Builder-AppImage baut der Workflow `ps5-builder-release.yml` dort. Solange es kein Release mit
 AppImage gibt, meldet „Auf Updates prüfen“ für `heylisten` einen Fehler.
 
+## Spielstände zwischen Longshot und HeyListen
+
+In der Web-UI unter **Spielstände** (Skript `scripts/saves.py`, Stufen `saves-status`, `saves-copy`, `saves-restore`):
+
+- **Spielstände von der PS5 lesen:** liest per FTP `/data/homebrew/PPSA99025/user/save` und `/data/homebrew/PPSA99026/user/save`,
+  zeigt je Spiel Dateien, Größe und letzte Änderung und markiert den neueren Stand bzw. „gleich“ (Inhalt verglichen).
+- **Kopieren** (z. B. Longshot → HeyListen): sichert zuerst das Ziel nach `/config/saves/backups/<Zeit>-<spiel>-vor-kopie`,
+  liest die Quelle und spiegelt sie ins Ziel (Dateien, die nur im Ziel lagen, werden entfernt; sie sind im Backup), prüft
+  danach die Größen.
+- **Backup zurückspielen:** ein Backup in eines der beiden Spiele, das Ziel wird vorher ebenfalls gesichert. Es bleiben die
+  letzten 30 Backups.
+
+Beide Ports speichern unter `<Title>/user/save/<Benutzer-ID>/` mit derselben festen Benutzer-ID (`host/nn_fs.c`,
+`user_uid` in `host/nn_*.c` von PS5_Longshot und PS5_HeyListen). Kopiert wird der ganze Ordner, unverändert. Dass das
+jeweils andere Spiel die Spielstände lädt, ist auf der Konsole noch ungeprüft: vor dem ersten Kopieren erst lesen, dann
+kopieren, im Spiel prüfen; zur Not das Backup zurückspielen.
+
+Während des Kopierens darf keines der beiden Spiele auf der PS5 laufen. „Neuer“ richtet sich nach den Dateizeiten, die der
+FTP-Server der PS5 meldet (bei Servern ohne `MLSD`/`MDTM` nur auf die Minute genau).
+
 ## Konsole
 
 In der Web-UI unter **Konsole** (gespeichert in `/config/model`, geht vor `MODEL`). Das Title wird für ein Modell gebaut

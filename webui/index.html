@@ -21,7 +21,7 @@
   button.primary { background:#1f3a2d; border-color:#2f6b4c; }
   button.stop { border-color:#6b2f2f; }
   .btns { display:grid; gap:6px; }
-  .btns small { color:var(--dim); display:block; font-size:12px; }
+  button small { color:var(--dim); display:block; font-size:12px; }
   dl { margin:0; display:grid; grid-template-columns: auto 1fr; gap:4px 10px; font-size:13px; }
   dt { color:var(--dim); } dd { margin:0; word-break:break-all; }
   #state { font-weight:600; }
@@ -32,6 +32,15 @@
   .relbar { display:grid; grid-template-columns: 1fr auto; gap:6px; }
   .relbar button { width:auto; }
   .msg { color:var(--dim); font-size:12px; margin-top:6px; }
+  .saves { display:grid; gap:6px; margin:8px 0; }
+  .savecard { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; }
+  .savecard b { font-weight:600; } .savecard small { color:var(--dim); display:block; }
+  .tag { font-size:11px; padding:1px 6px; border-radius:9px; margin-left:6px; border:1px solid var(--line); }
+  .tag.new { color:var(--acc); border-color:#2f6b4c; } .tag.same { color:var(--dim); }
+  .row3 { display:grid; grid-template-columns: 1fr auto 1fr; gap:6px; align-items:center; margin-top:8px; }
+  .row3 span { color:var(--dim); }
+  .saves-act { display:grid; gap:6px; margin-top:6px; }
+  .hist { font-size:12px; color:var(--dim); margin-top:8px; }
 </style>
 </head>
 <body>
@@ -70,6 +79,18 @@
       <div id="relmsg" class="msg">&hellip;</div>
     </section>
     <section>
+      <h2>Spielstände</h2>
+      <button id="savesread">Spielstände von der PS5 lesen<small>beide Titles per FTP: Dateien, Datum, gleich oder verschieden</small></button>
+      <div class="saves" id="savecards"><div class="msg">noch nicht gelesen</div></div>
+      <div class="row3"><select id="savefrom"></select><span>&rarr;</span><select id="saveto"></select></div>
+      <div class="saves-act"><button class="primary" id="savecopy">Kopieren<small>Ziel wird vorher gesichert, dann mit der Quelle gespiegelt</small></button></div>
+      <div style="margin-top:12px"><select id="savebackup"></select></div>
+      <div class="row3"><span>zurück nach</span><span></span><select id="restoreto"></select></div>
+      <div class="saves-act"><button id="saverestore">Backup zurückspielen<small>Ziel wird vorher ebenfalls gesichert</small></button></div>
+      <div class="msg">Beim Kopieren darf keines der beiden Spiele auf der PS5 laufen. Backups: /config/saves/backups (die letzten 30).</div>
+      <div class="hist" id="savehist"></div>
+    </section>
+    <section>
       <h2>Stand</h2>
       <dl>
         <dt>Spiel</dt><dd id="nup">&ndash;</dd>
@@ -89,7 +110,7 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
-let next = 0, lastLog = null, modelsShown = false, shownProject = null;
+let next = 0, lastLog = null, modelsShown = false, shownProject = null, lastSavesEnd = undefined;
 async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
 function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
 async function refresh() {
@@ -101,6 +122,8 @@ async function refresh() {
     else if (s.code !== null) { st.textContent = s.stage + ': Fehler (Exit ' + s.code + ')'; st.className = 'bad'; }
     else { st.textContent = 'bereit'; st.className = ''; }
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
+    ['#savesread', '#savecopy', '#saverestore'].forEach(id => $(id).disabled = s.running || !s.ps5);
+    if (lastSavesEnd !== s.ended) { lastSavesEnd = s.ended; loadSaves(); }
     $('#rel').disabled = s.running; $('#project').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → ' + s.title_id;
@@ -184,6 +207,71 @@ $('#lang').onchange = async () => {
   const r = await api('/api/language?language=' + encodeURIComponent($('#lang').value), { method: 'POST' });
   if (!r.ok) alert(r.msg);
   refresh();
+};
+const SAVE_NAMES = { longshot: 'Longshot', heylisten: 'HeyListen' };
+let savesData = null;
+function fmtIso(t) { return t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '?'; }
+function fillSelect(sel, opts) {
+  const keep = sel.value; sel.innerHTML = '';
+  opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
+  if (opts.some(o => o[0] === keep)) sel.value = keep;
+}
+async function loadSaves() {
+  try { savesData = await api('/api/saves'); } catch (e) { return; }
+  const st = savesData.status, box = $('#savecards');
+  box.innerHTML = '';
+  if (!st) { box.innerHTML = '<div class="msg">' + (savesData.ps5 ? 'noch nicht gelesen' : 'PS5_HOST nicht gesetzt') + '</div>'; }
+  else {
+    Object.entries(st.titles).forEach(([k, t]) => {
+      const d = document.createElement('div'); d.className = 'savecard';
+      let tag = '';
+      if (st.same && t.present) tag = '<span class="tag same">gleich</span>';
+      else if (st.newer === k) tag = '<span class="tag new">neuer</span>';
+      else if (st.same === false && !st.newer && t.present) tag = '<span class="tag">verschieden, gleiches Datum</span>';
+      d.innerHTML = '<b>' + t.label + '</b> <span class="msg">' + t.title_id + '</span>' + tag +
+        '<small>' + (t.present ? t.files + ' Dateien, ' + Math.max(1, Math.round(t.bytes / 1024)) + ' KB, geändert ' + fmtIso(t.newest)
+                             : 'keine Spielstände' + (t.installed ? '' : ' (Title nicht installiert)')) + '</small>';
+      box.appendChild(d);
+    });
+    const m = document.createElement('div'); m.className = 'msg'; m.textContent = 'gelesen ' + fmtIso(st.time);
+    box.appendChild(m);
+  }
+  const titles = Object.entries(SAVE_NAMES);
+  if (!$('#savefrom').options.length) {
+    fillSelect($('#savefrom'), titles); fillSelect($('#saveto'), titles); fillSelect($('#restoreto'), titles);
+    $('#saveto').value = 'heylisten';
+  }
+  if (st && st.newer && document.activeElement !== $('#savefrom') && !$('#savefrom').dataset.touched) {
+    $('#savefrom').value = st.newer; $('#saveto').value = st.newer === 'longshot' ? 'heylisten' : 'longshot';
+  }
+  fillSelect($('#savebackup'), savesData.backups.length ? savesData.backups.map(b => [b.name,
+    b.title + ', gesichert ' + b.name.slice(6, 8) + '.' + b.name.slice(4, 6) + '. ' + b.name.slice(9, 11) + ':' + b.name.slice(11, 13) +
+    ' (' + b.files + ' Dateien, Stand ' + fmtIso(b.newest) + ')']) : [['', 'noch keine Backups']]);
+  $('#savehist').innerHTML = savesData.history.slice(0, 5).map(h => fmtIso(h.time) + ': ' +
+    (h.action === 'copy' ? SAVE_NAMES[h.from] + ' → ' + SAVE_NAMES[h.to] : 'Backup → ' + SAVE_NAMES[h.to])).join('<br>');
+}
+$('#savefrom').onchange = () => { $('#savefrom').dataset.touched = '1'; };
+$('#savesread').onclick = async () => {
+  const r = await api('/api/run?stage=saves-status', { method: 'POST' });
+  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+};
+$('#savecopy').onclick = async () => {
+  const f = $('#savefrom').value, t = $('#saveto').value;
+  if (f === t) { alert('Quelle und Ziel müssen verschieden sein'); return; }
+  const st = savesData && savesData.status;
+  let warn = '';
+  if (st && st.newer && st.newer === t) warn = '\n\nACHTUNG: das Ziel ist nach Dateidatum NEUER als die Quelle.';
+  if (!st) warn = '\n\nDie Spielstände wurden noch nicht gelesen.';
+  if (!confirm('Spielstände von ' + SAVE_NAMES[f] + ' nach ' + SAVE_NAMES[t] + ' kopieren?\n\nDas Ziel wird vorher gesichert und danach mit der Quelle gespiegelt. Beide Spiele müssen auf der PS5 beendet sein.' + warn)) return;
+  const r = await api('/api/saves/copy?from=' + f + '&to=' + t, { method: 'POST' });
+  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+};
+$('#saverestore').onclick = async () => {
+  const b = $('#savebackup').value, t = $('#restoreto').value;
+  if (!b) return;
+  if (!confirm('Backup ' + b + ' nach ' + SAVE_NAMES[t] + ' zurückspielen?\n\nDer jetzige Stand dort wird vorher gesichert.')) return;
+  const r = await api('/api/saves/restore?backup=' + encodeURIComponent(b) + '&to=' + t, { method: 'POST' });
+  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
 };
 $('#relload').onclick = () => loadReleases(true);
 $('#stop').onclick = () => api('/api/stop', { method: 'POST' }).then(refresh);

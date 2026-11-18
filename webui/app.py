@@ -26,7 +26,10 @@ PROJECTS = {
                   "title_id": "PPSA99026", "state": os.path.join(CONFIG, "heylisten"), "ref_env": "HEYLISTEN_REF"},
 }
 PROJECT_FILE = os.path.join(CONFIG, "project")
-STAGES = ("check", "all", "update", "build", "deploy")
+STAGES = ("check", "all", "update", "build", "deploy", "saves-status")
+SAVE_TITLES = ("longshot", "heylisten")   # (scripts/saves.py TITLES)
+SAVES_DIR = os.path.join(CONFIG, "saves")
+BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z]+-[a-z-]+$")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
 # Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt
 LANGUAGES = {"de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
@@ -48,7 +51,7 @@ def running():
     return bool(state["proc"] and state["proc"].poll() is None)
 
 
-def start(stage):
+def start(stage, env=None):
     with lock:
         if running():
             return False, "es laeuft schon: " + state["stage"]
@@ -56,6 +59,7 @@ def start(stage):
         path = os.path.join(LOGS, time.strftime("%Y%m%d-%H%M%S") + "-" + stage + ".log")
         fh = open(path, "wb")
         proc = subprocess.Popen(["bash", "/app/scripts/build.sh", stage], stdout=fh, stderr=subprocess.STDOUT,
+                                env=dict(os.environ, **(env or {})),
                                 start_new_session=True)
         state.update(proc=proc, stage=stage, started=time.time(), ended=None, code=None, log=path)
         latest = os.path.join(LOGS, "latest.log")
@@ -224,6 +228,19 @@ def status():
     return s
 
 
+def saves_info():
+    """Stand der Spielstaende (scripts/saves.py status), die Backups und der Verlauf der Kopien"""
+    try:
+        r = subprocess.run(["python3", "/app/scripts/saves.py", "backups"], capture_output=True, text=True, timeout=30,
+                           env=dict(os.environ, CONFIG_DIR=CONFIG))
+        backups = json.loads(r.stdout) if r.returncode == 0 else []
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        backups = []
+    return {"status": read_json(os.path.join(SAVES_DIR, "status.json")), "backups": backups,
+            "history": (read_json(os.path.join(SAVES_DIR, "history.json")) or [])[:10],
+            "ps5": bool(os.environ.get("PS5_HOST", "").strip())}
+
+
 def save_choice(path, value):
     with lock:
         if running():
@@ -260,6 +277,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.send(200, json.dumps(dict(releases(force), ref=current_ref())))
             except Exception as e:
                 return self.send(502, json.dumps({"error": str(e), "ref": current_ref(), "releases": []}))
+        if u.path == "/api/saves":
+            return self.send(200, json.dumps(saves_info()))
         if u.path == "/api/log":
             q = urllib.parse.parse_qs(u.query)
             try:
@@ -297,6 +316,18 @@ class H(http.server.BaseHTTPRequestHandler):
             if not save_choice(ref_file(), ref):
                 return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
             return self.send(200, json.dumps({"ok": True, "ref": ref}))
+        if u.path == "/api/saves/copy":
+            src, dst = q.get("from", [""])[0], q.get("to", [""])[0]
+            if src not in SAVE_TITLES or dst not in SAVE_TITLES or src == dst:
+                return self.send(400, json.dumps({"ok": False, "msg": "Quelle und Ziel: zwei verschiedene Spiele"}))
+            ok, msg = start("saves-copy", {"SAVES_FROM": src, "SAVES_TO": dst})
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
+        if u.path == "/api/saves/restore":
+            name, dst = q.get("backup", [""])[0], q.get("to", [""])[0]
+            if not BACKUP_RE.match(name) or dst not in SAVE_TITLES or not os.path.isdir(os.path.join(SAVES_DIR, "backups", name)):
+                return self.send(400, json.dumps({"ok": False, "msg": "unbekanntes Backup oder Ziel"}))
+            ok, msg = start("saves-restore", {"SAVES_BACKUP": name, "SAVES_TO": dst})
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
         if u.path == "/api/project":
             p = q.get("project", [""])[0]
             if p not in PROJECTS:
