@@ -227,7 +227,7 @@ async function loadSaves() {
       let tag = '';
       if (st.same && t.present) tag = '<span class="tag same">gleich</span>';
       else if (st.newer === k) tag = '<span class="tag new">neuer</span>';
-      else if (st.same === false && !st.newer && t.present) tag = '<span class="tag">verschieden, gleiches Datum</span>';
+      else if (st.same === false && !st.newer && t.present) tag = '<span class="tag">verschieden</span>';
       d.innerHTML = '<b>' + t.label + '</b> <span class="msg">' + t.title_id + '</span>' + tag +
         '<small>' + (t.present ? t.files + ' Dateien, ' + Math.max(1, Math.round(t.bytes / 1024)) + ' KB, geändert ' + fmtIso(t.newest)
                              : 'keine Spielstände' + (t.installed ? '' : ' (Title nicht installiert)')) + '</small>';
