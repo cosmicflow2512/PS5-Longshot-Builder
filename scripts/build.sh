@@ -75,8 +75,14 @@ fi
 # (/app0/lossless/Lossless.dll, gpu/vk/vk_framegen.cpp). LOSSLESS_DLL: ihr Pfad im Container (Unraid: eine Datei unter
 # einem eingebundenen Pfad). Bei jedem Build und Deploy; ohne Datei nichts.
 copy_lossless() {
-    [[ $PROJECT == fork && -n ${LOSSLESS_DLL:-} && -d $TITLE ]] || return 0   # (nur der Fork hat Lossless Scaling)
-    if [[ ! -f $LOSSLESS_DLL ]]; then echo "  Hinweis: LOSSLESS_DLL=$LOSSLESS_DLL gibt es nicht: ohne Lossless.dll"; return 0; fi
+    [[ $PROJECT == fork && -d $TITLE ]] || return 0   # (nur der Fork hat Lossless Scaling)
+    local dll=${LOSSLESS_DLL:-/lossless/Lossless.dll}   # (Standard: der Ordner "Lossless Scaling" des Templates, nach /lossless)
+    if [[ ! -f $dll ]]; then
+        echo "  Hinweis: keine Lossless.dll unter $dll: ohne Lossless Scaling. Im Container unter Edit einen Pfad anlegen:"
+        echo "           Container-Pfad /lossless, Host-Pfad der Ordner mit der Lossless.dll (z. B. /mnt/user/PS5), Read Only"
+        return 0
+    fi
+    LOSSLESS_DLL=$dll
     mkdir -p "$TITLE/lossless"
     cp -f "$LOSSLESS_DLL" "$TITLE/lossless/Lossless.dll"
     echo "  Lossless.dll: $LOSSLESS_DLL -> $TITLE/lossless/Lossless.dll ($(du -h "$LOSSLESS_DLL" | cut -f1))"
