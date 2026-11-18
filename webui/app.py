@@ -25,9 +25,12 @@ PROJECTS = {
                   "repo": os.environ.get("HEYLISTEN_REPO", "cosmicflow2512/PS5_HeyListen"), "appimage": "HeyListenPS5Builder",
                   "title_id": "PPSA99026", "state": os.path.join(CONFIG, "heylisten"), "ref_env": "HEYLISTEN_REF"},
 }
+PROJECTS["fork"] = {"label": "Longshot-Fork (cosmicflow2512/PS5_Longshot, mit den offenen PRs)",
+                    "repo": os.environ.get("FORK_REPO", "cosmicflow2512/PS5_Longshot"), "appimage": "LongshotPS5Builder",
+                    "title_id": "PPSA99198", "state": os.path.join(CONFIG, "fork"), "ref_env": "FORK_REF"}
 PROJECT_FILE = os.path.join(CONFIG, "project")
 STAGES = ("check", "all", "update", "build", "deploy", "saves-status")
-SAVE_TITLES = ("longshot", "heylisten")   # (scripts/saves.py TITLES)
+SAVE_TITLES = ("longshot", "heylisten", "fork")   # (scripts/saves.py TITLES)
 SAVES_DIR = os.path.join(CONFIG, "saves")
 BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z]+-[a-z-]+$")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}

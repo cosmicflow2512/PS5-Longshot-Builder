@@ -61,13 +61,18 @@ Danach unter Docker → Add Container das Template `ps5-longshot-builder` wähle
 
 In der Web-UI unter **Projekt** (gespeichert in `/config/project`, geht vor `PROJECT`, Standard `longshot`):
 
-| | `longshot` | `heylisten` |
-| --- | --- | --- |
-| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) |
-| AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` |
-| Title | `PPSA99025` | `PPSA99026` |
-| Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` |
-| Builder, Build-Dateien, Stand | direkt unter `/config` (wie bisher) | unter `/config/heylisten` |
+| | `longshot` | `heylisten` | `fork` |
+| --- | --- | --- | --- |
+| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) | [cosmicflow2512/PS5_Longshot](https://github.com/cosmicflow2512/PS5_Longshot) |
+| AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` | `LongshotPS5Builder-<tag>-x86_64.AppImage` |
+| Title | `PPSA99025` | `PPSA99026` | `PPSA99198` |
+| Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` | `FORK_REF` |
+| Builder, Build-Dateien, Stand | direkt unter `/config` (wie bisher) | unter `/config/heylisten` | unter `/config/fork` |
+
+`fork` ist PS5_Longshot v0.1.3 mit den offenen Pull Requests #6, #18–#23, #32, #33 und #35 (darunter der Entwurf #21,
+Lossless Scaling). #35 verlegt das Title auf `PPSA99198`, weil das Homebrew reUndr `PPSA99025` nutzt. Mit dem Ordner
+„Lossless Scaling“ im Template (nach `/lossless`, `LOSSLESS_DLL`) legen Build und Deploy des Forks die eigene `Lossless.dll`
+als `lossless/Lossless.dll` ins Title, wo das Spiel sie sucht (`gpu/vk/vk_framegen.cpp` von PR #21).
 
 Beide Titles können nebeneinander auf der PS5 liegen. Konsole und Spielsprache gelten für beide Projekte. Die `.nup`
 sucht PS5_HeyListen an denselben Orten wie Longshot (`host/ps5/win32_ps5.c` stammt von dort).
@@ -78,7 +83,8 @@ AppImage gibt, meldet „Auf Updates prüfen“ für `heylisten` einen Fehler.
 
 ## Spielstände zwischen Longshot und HeyListen
 
-In der Web-UI unter **Spielstände** (Skript `scripts/saves.py`, Stufen `saves-status`, `saves-copy`, `saves-restore`):
+In der Web-UI unter **Spielstände** (Skript `scripts/saves.py`, Stufen `saves-status`, `saves-copy`, `saves-restore`), zwischen
+allen drei Titles (`PPSA99025`, `PPSA99026`, `PPSA99198`):
 
 - **Spielstände von der PS5 lesen:** liest per FTP `/data/homebrew/PPSA99025/user/save` und `/data/homebrew/PPSA99026/user/save`,
   zeigt je Spiel Dateien, Größe und letzte Änderung und markiert den neueren Stand bzw. „gleich“ (Inhalt verglichen).

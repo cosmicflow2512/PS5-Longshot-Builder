@@ -32,7 +32,11 @@ case $PROJECT in
         # (PS5_HeyListen: HeyListens Engine mit dem PS5-Port von PS5_Longshot; die Quellen liegen dort unter engine/)
         REPO=${HEYLISTEN_REPO:-cosmicflow2512/PS5_HeyListen} NAME=HeyListenPS5Builder TITLE_ID=PPSA99026
         STATE=$CONFIG_DIR/heylisten REF=${HEYLISTEN_REF:-latest} SRC_PREFIX="engine/" GAME_NAME=HeyListen ;;
-    *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot oder heylisten)\n' "$PROJECT" >&2; exit 1 ;;
+    fork)
+        # (der eigene Fork von PS5_Longshot mit den offenen Pull Requests, Title PPSA99198 nach PR #35)
+        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot} NAME=LongshotPS5Builder TITLE_ID=PPSA99198
+        STATE=$CONFIG_DIR/fork REF=${FORK_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot-Fork ;;
+    *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot, heylisten oder fork)\n' "$PROJECT" >&2; exit 1 ;;
 esac
 GH="https://github.com/$REPO"
 API="https://api.github.com/repos/$REPO"
@@ -66,6 +70,17 @@ esac
 if [[ -n $LANGUAGE && " $LANGUAGES " != *" $LANGUAGE "* ]]; then
     die "LANGUAGE=$LANGUAGE unbekannt ($LANGUAGES)"
 fi
+
+# Lossless Scaling (Frame Generation des Forks, PR #21): die eigene Lossless.dll in den Title-Ordner, wo das Spiel sie sucht
+# (/app0/lossless/Lossless.dll, gpu/vk/vk_framegen.cpp). LOSSLESS_DLL: ihr Pfad im Container (Unraid: eine Datei unter
+# einem eingebundenen Pfad). Bei jedem Build und Deploy; ohne Datei nichts.
+copy_lossless() {
+    [[ $PROJECT == fork && -n ${LOSSLESS_DLL:-} && -d $TITLE ]] || return 0   # (nur der Fork hat Lossless Scaling)
+    if [[ ! -f $LOSSLESS_DLL ]]; then echo "  Hinweis: LOSSLESS_DLL=$LOSSLESS_DLL gibt es nicht: ohne Lossless.dll"; return 0; fi
+    mkdir -p "$TITLE/lossless"
+    cp -f "$LOSSLESS_DLL" "$TITLE/lossless/Lossless.dll"
+    echo "  Lossless.dll: $LOSSLESS_DLL -> $TITLE/lossless/Lossless.dll ($(du -h "$LOSSLESS_DLL" | cut -f1))"
+}
 
 # language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c).
 write_language() {
@@ -318,6 +333,7 @@ stage_build() {
     fi
     [[ -f $TITLE/eboot.bin && -f $TITLE/image.bin ]] || die "eboot.bin oder image.bin fehlt nach dem Build in $TITLE"
     write_language
+    copy_lossless
     printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s"}\n' "$(builder_tag)" "$MODEL" "$(date '+%d.%m.%Y %H:%M')" \
         "$(basename "${nup:-}")" > "$STATE/build-info.json"
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
@@ -329,6 +345,7 @@ stage_build() {
 stage_deploy() {
     [[ -f $TITLE/eboot.bin ]] || die "kein Title unter $TITLE (erst build)"
     write_language
+    copy_lossless
     local args=(--dist "$TITLE")
     if [[ ${UPLOAD_NUP:-false} == true ]]; then
         local nup; nup=$(find_nup)

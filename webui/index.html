@@ -208,7 +208,7 @@ $('#lang').onchange = async () => {
   if (!r.ok) alert(r.msg);
   refresh();
 };
-const SAVE_NAMES = { longshot: 'Longshot', heylisten: 'HeyListen' };
+const SAVE_NAMES = { longshot: 'Longshot', heylisten: 'HeyListen', fork: 'Longshot-Fork' };
 let savesData = null;
 function fmtIso(t) { return t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '?'; }
 function fillSelect(sel, opts) {
@@ -225,9 +225,11 @@ async function loadSaves() {
     Object.entries(st.titles).forEach(([k, t]) => {
       const d = document.createElement('div'); d.className = 'savecard';
       let tag = '';
-      if (st.same && t.present) tag = '<span class="tag same">gleich</span>';
-      else if (st.newer === k) tag = '<span class="tag new">neuer</span>';
-      else if (st.same === false && !st.newer && t.present) tag = '<span class="tag">verschieden</span>';
+      if (st.same && t.present) tag = '<span class="tag same">alle gleich</span>';
+      else if (t.present) {
+        if (st.newer === k) tag += '<span class="tag new">neuester</span>';
+        if (t.same_as && t.same_as.length) tag += '<span class="tag same">gleich wie ' + t.same_as.map(o => SAVE_NAMES[o]).join(', ') + '</span>';
+      }
       d.innerHTML = '<b>' + t.label + '</b> <span class="msg">' + t.title_id + '</span>' + tag +
         '<small>' + (t.present ? t.files + ' Dateien, ' + Math.max(1, Math.round(t.bytes / 1024)) + ' KB, geändert ' + fmtIso(t.newest)
                              : 'keine Spielstände' + (t.installed ? '' : ' (Title nicht installiert)')) + '</small>';
@@ -242,7 +244,8 @@ async function loadSaves() {
     $('#saveto').value = 'heylisten';
   }
   if (st && st.newer && document.activeElement !== $('#savefrom') && !$('#savefrom').dataset.touched) {
-    $('#savefrom').value = st.newer; $('#saveto').value = st.newer === 'longshot' ? 'heylisten' : 'longshot';
+    $('#savefrom').value = st.newer;
+    if ($('#saveto').value === st.newer) $('#saveto').value = Object.keys(SAVE_NAMES).find(k => k !== st.newer);
   }
   fillSelect($('#savebackup'), savesData.backups.length ? savesData.backups.map(b => [b.name,
     b.title + ', gesichert ' + b.name.slice(6, 8) + '.' + b.name.slice(4, 6) + '. ' + b.name.slice(9, 11) + ':' + b.name.slice(11, 13) +

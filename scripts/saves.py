@@ -27,7 +27,7 @@ import shutil
 import sys
 import time
 
-TITLES = {"longshot": ("Longshot", "PPSA99025"), "heylisten": ("HeyListen", "PPSA99026")}
+TITLES = {"longshot": ("Longshot", "PPSA99025"), "heylisten": ("HeyListen", "PPSA99026"), "fork": ("Longshot-Fork", "PPSA99198")}
 CONFIG = os.environ.get("CONFIG_DIR", "/config")
 SAVES = os.path.join(CONFIG, "saves")
 BACKUPS = os.path.join(SAVES, "backups")
@@ -393,16 +393,21 @@ def cmd_status():
     f.quit()
     t = result["titles"]
     have = [k for k in TITLES if t[k]["present"]]
-    if len(have) == 2:
-        a, b = have
-        if t[a].get("digest") and t[a].get("digest") == t[b].get("digest"):
-            result["same"] = True
-            say("-> beide Spielstaende sind gleich")
+    for k in have:   # (gleicher Inhalt wie welche anderen)
+        t[k]["same_as"] = [o for o in have if o != k and t[k].get("digest") and t[k].get("digest") == t[o].get("digest")]
+    if len(have) >= 2:
+        result["same"] = all(len(t[k]["same_as"]) == len(have) - 1 for k in have)
+        if result["same"]:
+            say("-> alle Spielstaende sind gleich")
         else:
-            result["same"] = False
-            na, nb = t[a]["newest"] or "", t[b]["newest"] or ""
-            result["newer"] = a if na > nb else b if nb > na else None
-            say("-> verschieden; neuer (nach Dateizeit): %s" % (TITLES[result["newer"]][0] if result["newer"] else "unklar, gleiche Zeit"))
+            top = max(t[k]["newest"] or "" for k in have)
+            newest = [k for k in have if (t[k]["newest"] or "") == top]
+            # (der neueste, wenn er es allein ist oder die mit gleicher Zeit gleichen Inhalt haben)
+            result["newer"] = newest[0] if len(newest) == 1 or all(o in t[newest[0]]["same_as"] for o in newest[1:]) else None
+            for k in have:
+                if t[k]["same_as"]:
+                    say("-> %s gleich wie %s" % (TITLES[k][0], ", ".join(TITLES[o][0] for o in t[k]["same_as"])))
+            say("-> neuester (nach Dateizeit): %s" % (TITLES[result["newer"]][0] if result["newer"] else "unklar, gleiche Zeit"))
     with open(STATUS, "w") as fh:
         json.dump(result, fh, indent=1)
 
