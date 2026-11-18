@@ -237,6 +237,42 @@ def store(f, local, remote):
             pass
 
 
+def unlock(f, target_key, remote, err):
+    """Schreiben in user/ des Ziels abgelehnt, obwohl der Title-Ordner beschreibbar ist: das Spiel hat user/ beim ersten
+    Start selbst angelegt, mit Rechten, die der FTP-Server nicht beschreiben darf (vermutet; beobachtet: Title-Ordner
+    beschreibbar, user/save/<id> vorhanden und leer, STOR darin 550). Erst SITE CHMOD 777 auf user, user/save und den
+    Ordner der Datei; sonst user/ umbenennen (dazu reicht der Title-Ordner) und neu anlegen. True: noch einmal versuchen"""
+    say("  Schreiben in %s abgelehnt (%s): Rechte freigeben" % (remote.rsplit("/", 1)[0], str(err).strip()))
+    user = title_dir(target_key) + "/user"
+    chain, cur = [], user
+    for part in remote[len(user) + 1:].split("/")[:-1]:
+        chain.append(cur)
+        cur += "/" + part
+    chain.append(cur)
+    ok = True
+    for d in chain:
+        try:
+            f.sendcmd("SITE CHMOD 777 " + d)
+        except ftplib.all_errors as e:
+            ok = False
+            say("    SITE CHMOD 777 %s: %s" % (d, str(e).strip()))
+            break
+    if ok:
+        say("    Rechte von %s freigegeben (SITE CHMOD 777)" % user)
+        return True
+    if tree(f, user):   # (nur wenn in user/ nichts liegt, was ein Spieler vermissen koennte)
+        say("    %s ist nicht leer: wird nicht umbenannt" % user)
+        return False
+    aside = "%s.vorher-%s" % (user, time.strftime("%Y%m%d-%H%M%S"))
+    try:
+        f.rename(user, aside)
+    except ftplib.all_errors as e:
+        say("    %s nicht umbenannt (%s)" % (user, str(e).strip()))
+        return False
+    say("    %s (leer, nicht beschreibbar) umbenannt nach %s; wird neu angelegt" % (user, aside))
+    return True
+
+
 def diagnose(f, target_key, remote, err):
     """warum STOR abgelehnt wurde: Ordner da? Schreiben im Title-Ordner moeglich?"""
     folder = remote.rsplit("/", 1)[0]
@@ -266,11 +302,19 @@ def mirror(f, src_dir, target_key):
         missing = mkdirs(f, remote.rsplit("/", 1)[0])
         if missing:
             say("  Hinweis: Ordner %s nicht angelegt (%s)" % (remote.rsplit("/", 1)[0], missing))
+        local = os.path.join(src_dir, *r.split("/"))
         try:
-            store(f, os.path.join(src_dir, *r.split("/")), remote)
-        except ftplib.all_errors as e:
-            diagnose(f, target_key, remote, e)
-            sys.exit("FEHLER: Kopieren abgebrochen bei %s. Was schon im Ziel lag, ist im Backup unter %s." % (r, BACKUPS))
+            store(f, local, remote)
+        except ftplib.error_perm as e:
+            if not unlock(f, target_key, remote, e):
+                diagnose(f, target_key, remote, e)
+                sys.exit("FEHLER: Kopieren abgebrochen bei %s. Was schon im Ziel lag, ist im Backup unter %s." % (r, BACKUPS))
+            mkdirs(f, remote.rsplit("/", 1)[0])
+            try:
+                store(f, local, remote)
+            except ftplib.all_errors as e2:
+                diagnose(f, target_key, remote, e2)
+                sys.exit("FEHLER: Kopieren abgebrochen bei %s. Was schon im Ziel lag, ist im Backup unter %s." % (r, BACKUPS))
         mt = want[r][1]
         try:   # (die Zeit der Quelle mitnehmen, wo der Server MFMT kann: sonst gilt die Zeit des Hochladens)
             f.sendcmd("MFMT %s %s" % (time.strftime("%Y%m%d%H%M%S", time.gmtime(mt)), remote))
