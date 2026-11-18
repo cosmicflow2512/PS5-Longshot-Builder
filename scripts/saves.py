@@ -19,6 +19,7 @@ import argparse
 import datetime
 import ftplib
 import hashlib
+import io
 import json
 import os
 import re
@@ -193,26 +194,83 @@ def iso(t):
 
 # ---- schreiben ----
 
+def is_dir(f, path):
+    try:
+        f.cwd(path)
+        f.cwd("/")
+        return True
+    except ftplib.all_errors:
+        return False
+
+
 def mkdirs(f, path):
-    cur = ""
+    """den Ordner path mit allen fehlenden Ebenen; die Antwort des Servers, wenn er danach fehlt (sonst None)"""
+    cur, last = "", None
     for part in path.strip("/").split("/"):
         cur += "/" + part
         try:
             f.mkd(cur)
+        except ftplib.all_errors as e:
+            last = "%s: %s" % (cur, e)
+    return None if is_dir(f, path) else (last or "unbekannt")
+
+
+def store(f, local, remote):
+    """local nach remote; bei 550 einmal mit Wechsel in den Ordner und relativem Namen (manche FTP-Server auf der PS5
+    lehnen absolute Pfade bei STOR ab). Wirft den Fehler des zweiten Versuchs weiter"""
+    with open(local, "rb") as fh:
+        try:
+            f.storbinary("STOR " + remote, fh)
+            return
+        except ftplib.error_perm as e:
+            first = e
+    folder, name = remote.rsplit("/", 1)
+    try:
+        f.cwd(folder)
+        with open(local, "rb") as fh:
+            f.storbinary("STOR " + name, fh)
+        say("  (%s: absolut abgelehnt [%s], relativ geschrieben)" % (name, str(first).strip()))
+    finally:
+        try:
+            f.cwd("/")
         except ftplib.all_errors:
             pass
+
+
+def diagnose(f, target_key, remote, err):
+    """warum STOR abgelehnt wurde: Ordner da? Schreiben im Title-Ordner moeglich?"""
+    folder = remote.rsplit("/", 1)[0]
+    say("")
+    say("FEHLER beim Schreiben von %s" % remote)
+    say("  Antwort der PS5: %s" % str(err).strip())
+    say("  Zielordner %s: %s" % (folder, "vorhanden" if is_dir(f, folder) else "fehlt"))
+    probe = title_dir(target_key) + "/.ps5-builder-schreibtest"
+    try:
+        f.storbinary("STOR " + probe, io.BytesIO(b"test"))
+        f.delete(probe)
+        say("  Schreibtest im Title-Ordner %s: geht" % title_dir(target_key))
+        say("  -> der Title-Ordner ist beschreibbar, nur der Spielstand-Ordner nicht. Laeuft %s gerade auf der PS5? Dann"
+            " das Spiel beenden und noch einmal kopieren." % TITLES[target_key][0])
+    except ftplib.all_errors as e:
+        say("  Schreibtest im Title-Ordner %s: abgelehnt (%s)" % (title_dir(target_key), str(e).strip()))
+        say("  -> der FTP-Server darf dort nicht schreiben. Laeuft %s gerade? Dann beenden. Sonst: ein Deploy schreibt"
+            " in denselben Ordner; geht das noch?" % TITLES[target_key][0])
 
 
 def mirror(f, src_dir, target_key):
     """den lokalen Ordner src_dir nach user/save von target_key: hochladen, ueberzaehlige Dateien entfernen, pruefen"""
     root = save_dir(target_key)
     want = local_files(src_dir)
-    mkdirs(f, root)
     for r in sorted(want):
         remote = root + "/" + r
-        mkdirs(f, remote.rsplit("/", 1)[0])
-        with open(os.path.join(src_dir, *r.split("/")), "rb") as fh:
-            f.storbinary("STOR " + remote, fh)
+        missing = mkdirs(f, remote.rsplit("/", 1)[0])
+        if missing:
+            say("  Hinweis: Ordner %s nicht angelegt (%s)" % (remote.rsplit("/", 1)[0], missing))
+        try:
+            store(f, os.path.join(src_dir, *r.split("/")), remote)
+        except ftplib.all_errors as e:
+            diagnose(f, target_key, remote, e)
+            sys.exit("FEHLER: Kopieren abgebrochen bei %s. Was schon im Ziel lag, ist im Backup unter %s." % (r, BACKUPS))
         mt = want[r][1]
         try:   # (die Zeit der Quelle mitnehmen, wo der Server MFMT kann: sonst gilt die Zeit des Hochladens)
             f.sendcmd("MFMT %s %s" % (time.strftime("%Y%m%d%H%M%S", time.gmtime(mt)), remote))
