@@ -190,9 +190,11 @@ def cmd_delete(tid):
     base = HOMEBREW + "/" + tid
     say("Title %s \"%s\" auf der PS5 loeschen (%s)" % (tid, entry.get("name") or "?", base))
     key = PROJECT_OF.get(tid, (tid.lower(),))[0]
+    for ini in ("longshot_options.ini", "hookshot_options.ini"):
+        saves.settings_backup(f, key, "vor-loeschen", remote=base + "/" + ini, label=tid)
     sv = saves.tree(f, base + "/user/save")
     if sv:
-        name = "%s-%s-vor-loeschen" % (time.strftime("%Y%m%d-%H%M%S"), key)
+        name = saves.fresh_name(saves.BACKUPS, key, "vor-loeschen")
         to = os.path.join(saves.BACKUPS, name)
         saves.download(f, base + "/user/save", sv, to)
         say("  Spielstaende gesichert: %d Dateien -> %s" % (len(sv), to))

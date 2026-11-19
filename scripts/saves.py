@@ -4,6 +4,15 @@
     saves.py copy --from A --to B        Ziel sichern, dann Quelle nach Ziel spiegeln (A, B: longshot, heylisten)
     saves.py restore --backup NAME --to B   Ziel sichern, dann das Backup NAME nach Ziel spiegeln
     saves.py backups                     vorhandene Backups
+    saves.py settings-backup             die Einstellungen aller Titles sichern
+    saves.py settings-restore --backup NAME --to B   Ziel sichern, dann die gesicherten Einstellungen NAME nach B
+    saves.py settings-copy --from A --to B           Ziel sichern, dann die Einstellungen von A nach B (gleiche Datei)
+    saves.py settings-backups            vorhandene Sicherungen der Einstellungen
+
+Die Einstellungen des Spiels (Menue, Grafik, Steuerung, Button prompts) stehen in einer Datei im Title-Ordner, neben der
+eboot.bin: longshot_options.ini bei Longshot und dem Fork (host/options_path.c, ohne --user und HOS_OPTIONS_FILE neben dem
+Spiel), hookshot_options.ini bei HeyListen (host/ps5/hos_sdl_ps5.c: /app0/hookshot_options.ini). Gesichert werden sie nach
+$CONFIG_DIR/saves/settings/<Zeit>-<title>-<anlass>/, getrennt von den Spielstaenden; bei jedem Sichern der Spielstaende mit.
 
 Umgebung: PS5_HOST, PS5_FTP_PORT (2121), CONFIG_DIR (/config).
 
@@ -34,6 +43,8 @@ BACKUPS = os.path.join(SAVES, "backups")
 STATUS = os.path.join(SAVES, "status.json")
 HISTORY = os.path.join(SAVES, "history.json")
 KEEP_BACKUPS = 30
+SETTINGS = os.path.join(SAVES, "settings")
+OPTIONS = {"longshot": "longshot_options.ini", "heylisten": "hookshot_options.ini", "fork": "longshot_options.ini"}
 MAX_DOWNLOAD = 256 << 20   # (groessere Ordner werden fuer den Vergleich nicht geladen: nur Groessen und Zeiten)
 MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
 BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]+-[a-z-]+$")   # (key: Projekt oder die Title-ID klein, scripts/titles.py)
@@ -335,13 +346,55 @@ def mirror(f, src_dir, target_key):
     say("  geprueft: %d Dateien im Ziel, Groessen stimmen" % len(want))
 
 
+def fresh_name(folder, key, reason):
+    """<zeit>-<key>-<reason>, den es unter folder noch nicht gibt (zwei Sicherungen in derselben Sekunde: die naechste)"""
+    while True:
+        name = "%s-%s-%s" % (time.strftime("%Y%m%d-%H%M%S"), key, reason)
+        if not os.path.exists(os.path.join(folder, name)):
+            return name
+        time.sleep(1)
+
+
+def options_path(key):
+    return title_dir(key) + "/" + OPTIONS[key]
+
+
+def read_bytes(f, path):
+    buf = io.BytesIO()
+    try:
+        f.voidcmd("TYPE I")
+        f.retrbinary("RETR " + path, buf.write)
+    except ftplib.all_errors:
+        return None
+    return buf.getvalue()
+
+
+def settings_backup(f, key, reason, remote=None, label=None):
+    """die Einstellungen (remote: Pfad, Standard die des Projekts key) nach settings/<zeit>-<key>-<reason>/; None ohne Datei"""
+    remote = remote or options_path(key)
+    data = read_bytes(f, remote)
+    if not data:
+        return None
+    name = fresh_name(SETTINGS, key, reason)
+    to = os.path.join(SETTINGS, name)
+    os.makedirs(to, exist_ok=True)
+    with open(os.path.join(to, remote.rsplit("/", 1)[1]), "wb") as fh:
+        fh.write(data)
+    say("  Einstellungen gesichert: %s (%s, %d Bytes) -> %s" % (label or TITLES[key][0], remote.rsplit("/", 1)[1], len(data), to))
+    names = sorted(n for n in os.listdir(SETTINGS) if BACKUP_RE.match(n))
+    for n in names[:-KEEP_BACKUPS]:
+        shutil.rmtree(os.path.join(SETTINGS, n), ignore_errors=True)
+    return name
+
+
 def backup(f, key, reason):
-    """user/save von key nach backups/<zeit>-<key>-<reason>; None wenn dort nichts liegt"""
+    """user/save von key nach backups/<zeit>-<key>-<reason>; None wenn dort nichts liegt. Die Einstellungen mit"""
+    settings_backup(f, key, reason)
     files = tree(f, save_dir(key))
     if not files:
         say("  %s: keine Spielstaende auf der PS5, nichts zu sichern" % TITLES[key][0])
         return None
-    name = "%s-%s-%s" % (time.strftime("%Y%m%d-%H%M%S"), key, reason)
+    name = fresh_name(BACKUPS, key, reason)
     to = os.path.join(BACKUPS, name)
     download(f, save_dir(key), files, to)
     say("  gesichert: %s (%d Dateien) -> %s" % (TITLES[key][0], len(files), to))
@@ -376,6 +429,11 @@ def cmd_status():
         installed = _has_size(f, title_dir(key) + "/eboot.bin")
         files = tree(f, save_dir(key))
         entry = {"label": label, "title_id": tid, "installed": installed, "path": save_dir(key), "present": bool(files)}
+        opt = read_bytes(f, options_path(key))
+        entry["settings"] = {"file": OPTIONS[key], "bytes": len(opt), "time": iso(mdtm(f, options_path(key)) or 0) or None,
+                             "digest": hashlib.sha1(opt).hexdigest(),
+                             "prompts": next((ln.split("=", 1)[1].strip() for ln in opt.decode("utf-8", "replace").splitlines()
+                                              if ln.startswith("button_prompts=")), None)} if opt else None
         if files:
             newest = max(files.items(), key=lambda kv: kv[1][1] or 0)
             total = sum(s for s, _ in files.values())
@@ -462,6 +520,84 @@ def cmd_restore(name, dst):
     say("fertig: %s hat jetzt den Stand aus %s" % (TITLES[dst][0], name))
 
 
+def settings_backups():
+    out = []
+    if os.path.isdir(SETTINGS):
+        for n in sorted((n for n in os.listdir(SETTINGS) if BACKUP_RE.match(n)), reverse=True):
+            files = [x for x in os.listdir(os.path.join(SETTINGS, n)) if x.endswith(".ini")]
+            if not files:
+                continue
+            key = n.split("-")[2]
+            out.append({"name": n, "title": TITLES.get(key, (key.upper(), ""))[0], "file": files[0],
+                        "bytes": os.path.getsize(os.path.join(SETTINGS, n, files[0]))})
+    return out
+
+
+def put_settings(f, data, dst, what):
+    """data als Einstellungen von dst schreiben (vorher sichern)"""
+    if not _has_size(f, title_dir(dst) + "/eboot.bin"):
+        sys.exit("FEHLER: %s ist auf der PS5 nicht installiert (%s fehlt)" % (TITLES[dst][0], title_dir(dst) + "/eboot.bin"))
+    saved = settings_backup(f, dst, "vor-einstellungen")
+    tmp = os.path.join(SAVES, "settings.tmp")
+    with open(tmp, "wb") as fh:
+        fh.write(data)
+    try:
+        store(f, tmp, options_path(dst))
+    except ftplib.all_errors as e:
+        sys.exit("FEHLER: %s nicht geschrieben (%s). Laeuft das Spiel noch?" % (options_path(dst), e))
+    finally:
+        os.remove(tmp)
+    if read_bytes(f, options_path(dst)) != data:
+        sys.exit("FEHLER: %s hat danach nicht den erwarteten Inhalt" % options_path(dst))
+    say("fertig: %s hat jetzt die Einstellungen %s%s" % (TITLES[dst][0], what, " (vorher gesichert: %s)" % saved if saved else ""))
+    return saved
+
+
+def cmd_settings_backup():
+    f = connect()
+    n = 0
+    for key in TITLES:
+        if settings_backup(f, key, "manuell"):
+            n += 1
+        else:
+            say("  %s: keine %s auf der PS5" % (TITLES[key][0], OPTIONS[key]))
+    f.quit()
+    say("fertig: %d Einstellungs-Dateien gesichert nach %s" % (n, SETTINGS))
+
+
+def cmd_settings_copy(src, dst):
+    if src == dst:
+        sys.exit("FEHLER: Quelle und Ziel sind gleich")
+    if OPTIONS[src] != OPTIONS[dst]:
+        sys.exit("FEHLER: %s (%s) und %s (%s) haben verschiedene Einstellungs-Dateien: nicht kopierbar"
+                 % (TITLES[src][0], OPTIONS[src], TITLES[dst][0], OPTIONS[dst]))
+    f = connect()
+    data = read_bytes(f, options_path(src))
+    if not data:
+        sys.exit("FEHLER: %s hat keine %s auf der PS5" % (TITLES[src][0], OPTIONS[src]))
+    say("Einstellungen %s -> %s (%d Bytes)" % (TITLES[src][0], TITLES[dst][0], len(data)))
+    saved = put_settings(f, data, dst, "von " + TITLES[src][0])
+    f.quit()
+    remember({"time": iso(time.time()), "action": "settings-copy", "from": src, "to": dst, "backup": saved})
+
+
+def cmd_settings_restore(name, dst):
+    d = os.path.join(SETTINGS, name)
+    if not BACKUP_RE.match(name) or not os.path.isdir(d):
+        sys.exit("FEHLER: keine Sicherung %s" % name)
+    files = [x for x in os.listdir(d) if x.endswith(".ini")]
+    if not files:
+        sys.exit("FEHLER: die Sicherung %s ist leer" % name)
+    if files[0] != OPTIONS[dst]:
+        sys.exit("FEHLER: die Sicherung ist eine %s, %s braucht %s" % (files[0], TITLES[dst][0], OPTIONS[dst]))
+    data = open(os.path.join(d, files[0]), "rb").read()
+    f = connect()
+    say("Einstellungen %s -> %s" % (name, TITLES[dst][0]))
+    saved = put_settings(f, data, dst, "aus " + name)
+    f.quit()
+    remember({"time": iso(time.time()), "action": "settings-restore", "backup_used": name, "to": dst, "backup": saved})
+
+
 def backups():
     out = []
     if os.path.isdir(BACKUPS):
@@ -476,7 +612,8 @@ def backups():
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("command", choices=("status", "copy", "restore", "backups"))
+    ap.add_argument("command", choices=("status", "copy", "restore", "backups", "settings-backup", "settings-restore",
+                                        "settings-copy", "settings-backups"))
     ap.add_argument("--from", dest="src", choices=sorted(TITLES))
     ap.add_argument("--to", dest="dst", choices=sorted(TITLES))
     ap.add_argument("--backup")
@@ -492,6 +629,18 @@ def main():
         if not a.backup or not a.dst:
             sys.exit("FEHLER: restore braucht --backup und --to")
         cmd_restore(a.backup, a.dst)
+    elif a.command == "settings-backup":
+        cmd_settings_backup()
+    elif a.command == "settings-copy":
+        if not a.src or not a.dst:
+            sys.exit("FEHLER: settings-copy braucht --from und --to")
+        cmd_settings_copy(a.src, a.dst)
+    elif a.command == "settings-restore":
+        if not a.backup or not a.dst:
+            sys.exit("FEHLER: settings-restore braucht --backup und --to")
+        cmd_settings_restore(a.backup, a.dst)
+    elif a.command == "settings-backups":
+        print(json.dumps(settings_backups(), indent=1))
     else:
         print(json.dumps(backups(), indent=1))
 

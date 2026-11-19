@@ -8,11 +8,24 @@
   :root { --bg:#111317; --panel:#1a1d23; --line:#2a2f38; --text:#d8dde5; --dim:#8a93a2; --acc:#4cc38a; --err:#e5534b; --warn:#d9a441; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font:14px/1.45 system-ui, sans-serif; }
-  header { padding:14px 20px; border-bottom:1px solid var(--line); display:flex; align-items:baseline; gap:14px; flex-wrap:wrap; }
-  header h1 { font-size:17px; margin:0; font-weight:600; }
-  header span { color:var(--dim); }
-  main { padding:16px 20px; display:grid; gap:16px; grid-template-columns: 340px 1fr; }
-  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  header { padding:10px 20px; border-bottom:1px solid var(--line); display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  header h1 { font-size:17px; margin:0; font-weight:600; white-space:nowrap; }
+  header select { width:auto; min-width:260px; max-width:100%; }
+  header .sp { flex:1; }
+  #state { font-weight:600; }
+  .bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; display:grid; gap:8px; }
+  .acts { display:flex; gap:8px; flex-wrap:wrap; }
+  .acts button { width:auto; text-align:center; padding:8px 14px; }
+  .acts button small { display:none; }
+  #updbanner { display:none; padding:7px 12px; border-radius:6px; border:1px solid #6b5a2f; color:var(--warn); background:#2a2416; font-size:13px; }
+  #updbanner.ok { border-color:#2f6b4c; color:var(--acc); background:#16261e; }
+  #updbanner button { width:auto; display:inline; padding:3px 10px; margin-left:8px; font-size:12px; }
+  .tabs { display:flex; gap:4px; }
+  .tabs button { width:auto; border-radius:6px 6px 0 0; padding:6px 14px; border-bottom-color:transparent; background:transparent; color:var(--dim); }
+  .tabs button.on { background:var(--panel); color:var(--text); border-color:var(--line); }
+  main { padding:16px 20px; display:grid; gap:16px; grid-template-columns: minmax(380px, 480px) 1fr; }
+  @media (max-width: 950px) { main { grid-template-columns: 1fr; } .bar, .logbox { position:static; } pre { height:60vh; } }
+  .tab { display:none; gap:16px; align-content:start; } .tab.on { display:grid; }
   section { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:14px; min-width:0; }
   h2 { font-size:12px; text-transform:uppercase; letter-spacing:.06em; color:var(--dim); margin:0 0 10px; font-weight:600; }
   button { background:#232833; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px 10px; cursor:pointer; font:inherit; width:100%; text-align:left; }
@@ -20,138 +33,196 @@
   button:disabled { opacity:.45; cursor:default; }
   button.primary { background:#1f3a2d; border-color:#2f6b4c; }
   button.stop { border-color:#6b2f2f; }
-  .btns { display:grid; gap:6px; }
   button small { color:var(--dim); display:block; font-size:12px; }
   dl { margin:0; display:grid; grid-template-columns: auto 1fr; gap:4px 10px; font-size:13px; }
   dt { color:var(--dim); } dd { margin:0; word-break:break-all; }
-  #state { font-weight:600; }
   .ok { color:var(--acc); } .bad { color:var(--err); } .run { color:var(--warn); }
-  pre { margin:0; height:calc(100vh - 110px); min-height:300px; overflow:auto; background:#0b0d10; border-radius:6px; padding:10px; font:12px/1.4 ui-monospace, monospace; white-space:pre-wrap; word-break:break-all; }
-  .side { display:grid; gap:16px; align-content:start; }
+  .logbox { position:sticky; top:120px; align-self:start; }
+  pre { margin:0; height:calc(100vh - 170px); min-height:300px; overflow:auto; background:#0b0d10; border-radius:6px; padding:10px; font:12px/1.4 ui-monospace, monospace; white-space:pre-wrap; word-break:break-all; }
   select { width:100%; background:#232833; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
+  .two { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
   .relbar { display:grid; grid-template-columns: 1fr auto; gap:6px; }
   .relbar button { width:auto; }
   .msg { color:var(--dim); font-size:12px; margin-top:6px; }
-  .saves { display:grid; gap:6px; margin:8px 0; }
-  .savecard { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; }
-  .savecard b { font-weight:600; } .savecard small { color:var(--dim); display:block; }
+  .cards { display:grid; gap:6px; margin:8px 0; }
+  .card { border:1px solid var(--line); border-radius:6px; padding:6px 8px; font-size:13px; }
+  .card b { font-weight:600; } .card small { color:var(--dim); display:block; }
   .tag { font-size:11px; padding:1px 6px; border-radius:9px; margin-left:6px; border:1px solid var(--line); }
-  .tag.new { color:var(--acc); border-color:#2f6b4c; } .tag.same { color:var(--dim); }
+  .tag.new { color:var(--acc); border-color:#2f6b4c; } .tag.same { color:var(--dim); } .tag.warn { color:var(--warn); border-color:#6b5a2f; }
   .row3 { display:grid; grid-template-columns: 1fr auto 1fr; gap:6px; align-items:center; margin-top:8px; }
   .row3 span { color:var(--dim); }
-  .saves-act { display:grid; gap:6px; margin-top:6px; }
+  .act { display:grid; gap:6px; margin-top:6px; }
   .hist { font-size:12px; color:var(--dim); margin-top:8px; }
   .tbtns { display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px; }
   .tbtns button { text-align:center; padding:5px; font-size:12px; }
-  .tag.warn { color:var(--warn); border-color:#6b5a2f; }
+  hr { border:0; border-top:1px solid var(--line); margin:14px 0; }
 </style>
 </head>
 <body>
-<header><h1>PS5 Builder</h1><span id="sub">&hellip;</span><span id="state">&hellip;</span></header>
-<main>
-  <div class="side">
-    <section>
-      <h2>Aktionen</h2>
-      <div class="btns">
-        <button data-stage="check">Auf Updates prüfen<small>neuestes Release gegen Builder und Title</small></button>
-        <button class="primary" data-stage="all">Alles bauen<small>Builder aktualisieren und Build</small></button>
-        <button data-stage="update">Builder aktualisieren<small>AppImage laden, prüfen, entpacken, --check</small></button>
-        <button data-stage="build">Build<small>.nup lesen, Lift, Kompilieren, Linken, Title</small></button>
-        <button data-stage="deploy">Auf die PS5 kopieren<small id="deploysub">FTP nach /data/homebrew/&hellip;</small></button>
-        <button class="stop" id="stop">Abbrechen</button>
-      </div>
-    </section>
-    <section>
-      <h2>Projekt</h2>
-      <select id="project"></select>
-      <div class="msg">Longshot baut PPSA99025, HeyListen PPSA99026: beide können nebeneinander auf der PS5 liegen. Builder, Build-Dateien und Release-Wahl sind je Projekt getrennt; Konsole und Sprache gelten für beide.</div>
-    </section>
-    <section>
-      <h2>Konsole</h2>
-      <select id="model"></select>
-      <div class="msg">Das Title wird für ein Modell gebaut. Base läuft auch auf der Pro (im Modus der Base). Gilt ab dem nächsten Build.</div>
-    </section>
-    <section>
-      <h2>Spielsprache</h2>
-      <select id="lang"></select>
-      <div class="msg">Steht in language.txt im Title. Gilt ab dem nächsten Build oder Deploy, ohne neu zu kompilieren.</div>
-    </section>
-    <section>
-      <h2>Release</h2>
-      <div class="relbar"><select id="rel"></select><button id="relload" title="Liste neu laden">&#8635;</button></div>
-      <div id="relmsg" class="msg">&hellip;</div>
-    </section>
-    <section>
-      <h2>Spielstände</h2>
-      <button id="savesread">Spielstände von der PS5 lesen<small>beide Titles per FTP: Dateien, Datum, gleich oder verschieden</small></button>
-      <div class="saves" id="savecards"><div class="msg">noch nicht gelesen</div></div>
-      <div class="row3"><select id="savefrom"></select><span>&rarr;</span><select id="saveto"></select></div>
-      <div class="saves-act"><button class="primary" id="savecopy">Kopieren<small>Ziel wird vorher gesichert, dann mit der Quelle gespiegelt</small></button></div>
-      <div style="margin-top:12px"><select id="savebackup"></select></div>
-      <div class="row3"><span>zurück nach</span><span></span><select id="restoreto"></select></div>
-      <div class="saves-act"><button id="saverestore">Backup zurückspielen<small>Ziel wird vorher ebenfalls gesichert</small></button></div>
-      <div class="msg">Beim Kopieren darf keines der beiden Spiele auf der PS5 laufen. Backups: /config/saves/backups (die letzten 30).</div>
-      <div class="hist" id="savehist"></div>
-    </section>
-    <section>
-      <h2>Titles auf der PS5</h2>
-      <button id="titlesread">Titles von der PS5 lesen<small>/data/homebrew per FTP: alle Zelda-Titles, Herkunft, Größe, Spielstände</small></button>
-      <div class="saves" id="titlecards"><div class="msg">noch nicht gelesen</div></div>
-      <div class="msg">Löschen sichert vorher die Spielstände des Titles (Backups oben). Umbenennen ändert den angezeigten Namen; bei Longshot, HeyListen und dem Fork behalten Build und Deploy ihn.</div>
-    </section>
-    <section>
-      <h2>Stand</h2>
-      <dl>
-        <dt>Spiel</dt><dd id="nup">&ndash;</dd>
-        <dt>Title</dt><dd id="out">&ndash;</dd>
-        <dt>Release</dt><dd id="ref">&ndash;</dd>
-        <dt>Builder</dt><dd id="builder">&ndash;</dd>
-        <dt>Letzter Build</dt><dd id="build">&ndash;</dd>
-        <dt>Updates</dt><dd id="upd">noch nicht geprüft</dd>
-        <dt>Frei</dt><dd id="free">&ndash;</dd>
-        <dt>PS5 (FTP)</dt><dd id="ps5">&ndash;</dd>
-      </dl>
-    </section>
+<header>
+  <h1>PS5 Builder</h1>
+  <select id="project" title="Projekt"></select>
+  <span id="sub" class="msg" style="margin:0">&hellip;</span>
+  <span class="sp"></span>
+  <span id="state">&hellip;</span>
+</header>
+<div class="bar">
+  <div class="acts">
+    <button data-stage="check" title="neuestes Release gegen Builder und Title; lädt danach die Release-Liste neu">Auf Updates prüfen</button>
+    <button class="primary" data-stage="all" title="Builder des gewählten Releases laden und bauen">Alles bauen</button>
+    <button data-stage="update" title="AppImage laden, prüfen, entpacken, --check">Builder aktualisieren</button>
+    <button data-stage="build" title=".nup lesen, Lift, Kompilieren, Linken, Title">Nur Build</button>
+    <button data-stage="deploy" id="deploybtn" title="FTP nach /data/homebrew">Auf die PS5 kopieren</button>
+    <button class="stop" id="stop">Abbrechen</button>
   </div>
-  <section>
+  <div id="updbanner"></div>
+  <div class="tabs">
+    <button data-tab="build" class="on">Build</button>
+    <button data-tab="saves">Spielstände &amp; Einstellungen</button>
+    <button data-tab="titles">Titles auf der PS5</button>
+  </div>
+</div>
+<main>
+  <div>
+    <div class="tab on" id="tab-build">
+      <section>
+        <h2>Release</h2>
+        <div class="relbar"><select id="rel"></select><button id="relload" title="Liste neu laden">&#8635;</button></div>
+        <div id="relmsg" class="msg">&hellip;</div>
+      </section>
+      <section>
+        <div class="two">
+          <div><h2>Konsole</h2><select id="model"></select></div>
+          <div><h2>Spielsprache</h2><select id="lang"></select></div>
+        </div>
+        <div class="msg">Konsole: Base läuft auch auf der Pro (im Modus der Base), gilt ab dem nächsten Build. Sprache: language.txt im Title, gilt ab dem nächsten Build oder Deploy. Beides gilt für alle Projekte.</div>
+      </section>
+      <section>
+        <h2>Stand</h2>
+        <dl>
+          <dt>Spiel</dt><dd id="nup">&ndash;</dd>
+          <dt>Title</dt><dd id="out">&ndash;</dd>
+          <dt>Release</dt><dd id="ref">&ndash;</dd>
+          <dt>Builder</dt><dd id="builder">&ndash;</dd>
+          <dt>Letzter Build</dt><dd id="build">&ndash;</dd>
+          <dt>Updates</dt><dd id="upd">noch nicht geprüft</dd>
+          <dt>Frei</dt><dd id="free">&ndash;</dd>
+          <dt>PS5 (FTP)</dt><dd id="ps5">&ndash;</dd>
+        </dl>
+      </section>
+    </div>
+
+    <div class="tab" id="tab-saves">
+      <section>
+        <h2>Spielstände</h2>
+        <button id="savesread">Von der PS5 lesen<small>alle Titles per FTP: Spielstände und Einstellungen, Datum, gleich oder verschieden</small></button>
+        <div class="cards" id="savecards"><div class="msg">noch nicht gelesen</div></div>
+        <div class="row3"><select id="savefrom"></select><span>&rarr;</span><select id="saveto"></select></div>
+        <div class="act"><button class="primary" id="savecopy">Spielstände kopieren<small>Ziel wird vorher gesichert, dann mit der Quelle gespiegelt</small></button></div>
+        <div style="margin-top:12px"><select id="savebackup"></select></div>
+        <div class="row3"><span>zurück nach</span><span></span><select id="restoreto"></select></div>
+        <div class="act"><button id="saverestore">Backup zurückspielen<small>Ziel wird vorher ebenfalls gesichert</small></button></div>
+        <div class="msg">Dabei darf keines der Spiele auf der PS5 laufen. Backups: /config/saves/backups (die letzten 30).</div>
+      </section>
+      <section>
+        <h2>Einstellungen des Spiels</h2>
+        <div class="cards" id="setcards"><div class="msg">noch nicht gelesen (oben „Von der PS5 lesen“)</div></div>
+        <div class="act"><button class="primary" id="setbackup">Einstellungen jetzt sichern<small>die INI-Datei jedes Titles nach /config/saves/settings</small></button></div>
+        <div class="row3"><select id="setfrom"></select><span>&rarr;</span><select id="setto"></select></div>
+        <div class="act"><button id="setcopy">Einstellungen kopieren<small>nur Longshot ↔ Longshot-Fork (gleiche Datei); Ziel wird vorher gesichert</small></button></div>
+        <div style="margin-top:12px"><select id="setsaved"></select></div>
+        <div class="row3"><span>zurück nach</span><span></span><select id="setrestoreto"></select></div>
+        <div class="act"><button id="setrestore">Sicherung zurückspielen<small>Ziel wird vorher ebenfalls gesichert</small></button></div>
+        <div class="msg">Menü, Grafik, Steuerung und Button prompts stehen in longshot_options.ini (Longshot, Fork) bzw. hookshot_options.ini (HeyListen) im Title-Ordner. Deploy und Build lassen sie unverändert; gesichert wird sie auch bei jedem Sichern der Spielstände und vor dem Löschen eines Titles. Das Spiel muss beim Zurückspielen beendet sein, sonst überschreibt es die Datei.</div>
+        <div class="hist" id="savehist"></div>
+      </section>
+    </div>
+
+    <div class="tab" id="tab-titles">
+      <section>
+        <h2>Titles auf der PS5</h2>
+        <button id="titlesread">Titles von der PS5 lesen<small>/data/homebrew per FTP: alle Zelda-Titles, Herkunft, Größe, Spielstände</small></button>
+        <div class="cards" id="titlecards"><div class="msg">noch nicht gelesen</div></div>
+        <div class="msg">Löschen sichert vorher Spielstände und Einstellungen des Titles. Umbenennen ändert den angezeigten Namen; bei Longshot, HeyListen und dem Fork behalten Build und Deploy ihn.</div>
+      </section>
+    </div>
+  </div>
+  <section class="logbox">
     <pre id="log"></pre>
   </section>
 </main>
 <script>
 const $ = s => document.querySelector(s);
-let next = 0, lastLog = null, modelsShown = false, shownProject = null, lastSavesEnd = undefined;
+let next = 0, lastLog = null, shownProject = null, lastEnded = undefined, psReady = false, busy = false;
+let savesData = null, titlesData = null, lastStatus = null;
+const NAMES = { longshot: 'Longshot', heylisten: 'HeyListen', fork: 'Longshot-Fork' };
+const PROJ_NAMES = { longshot: 'Projekt Longshot', heylisten: 'Projekt HeyListen', fork: 'Projekt Longshot-Fork' };
 async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
 function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
+function fmtIso(t) { return t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '?'; }
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+function fillSelect(sel, opts) {
+  const keep = sel.value; sel.innerHTML = '';
+  opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
+  if (opts.some(o => o[0] === keep)) sel.value = keep;
+}
+async function post(path) {
+  const r = await api(path, { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  next = 0; lastLog = null; refresh();
+  return r;
+}
+
+// ---- Tabs ----
+document.querySelectorAll('.tabs button').forEach(b => b.onclick = () => {
+  document.querySelectorAll('.tabs button').forEach(x => x.classList.toggle('on', x === b));
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('on', t.id === 'tab-' + b.dataset.tab));
+  localStorage.setItem('tab', b.dataset.tab);
+});
+const savedTab = localStorage.getItem('tab');
+if (savedTab) { const b = document.querySelector('.tabs button[data-tab="' + savedTab + '"]'); if (b) b.click(); }
+
+// ---- Hinweis nach der Update-Prüfung, oben in der Leiste ----
+function showUpdate(s) {
+  const u = s.updates, ban = $('#updbanner');
+  if (!u) { ban.style.display = 'none'; return; }
+  ban.style.display = 'block';
+  if (u.update) {
+    ban.className = '';
+    ban.innerHTML = 'Update für ' + esc(NAMES[s.project]) + ': ' + (u.built ? 'gebaut ist ' + esc(u.built) : 'noch nichts gebaut') +
+      ', gewählt ' + esc(u.want || u.latest || '?') + (u.latest && u.want !== u.latest ? ' (neuestes: ' + esc(u.latest) + ')' : '') +
+      ' <span class="msg">geprüft ' + esc(u.time) + '</span><button id="updgo" class="primary">Alles bauen</button>';
+    $('#updgo').disabled = s.running;
+    $('#updgo').onclick = () => post('/api/run?stage=all');
+  } else {
+    ban.className = 'ok';
+    ban.innerHTML = esc(NAMES[s.project]) + ' ist aktuell (' + esc(u.built || '?') + ') <span class="msg">geprüft ' + esc(u.time) + '</span>';
+  }
+}
+
 async function refresh() {
   try {
     const s = await api('/api/status');
+    lastStatus = s;
     const st = $('#state');
     if (s.running) { st.textContent = 'läuft: ' + s.stage + ' seit ' + fmt(s.started); st.className = 'run'; }
     else if (s.code === 0) { st.textContent = s.stage + ': fertig ' + fmt(s.ended); st.className = 'ok'; }
     else if (s.code !== null) { st.textContent = s.stage + ': Fehler (Exit ' + s.code + ')'; st.className = 'bad'; }
     else { st.textContent = 'bereit'; st.className = ''; }
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
-    ['#savesread', '#savecopy', '#saverestore'].forEach(id => $(id).disabled = s.running || !s.ps5);
-    $('#titlesread').disabled = s.running || !s.ps5;
-    if (busy !== s.running || psReady !== !!s.ps5) { busy = s.running; psReady = !!s.ps5; loadTitles(); }
-    if (lastSavesEnd !== s.ended) { lastSavesEnd = s.ended; loadSaves(); loadTitles(); }
+    ['#savesread', '#savecopy', '#saverestore', '#setbackup', '#setcopy', '#setrestore', '#titlesread']
+      .forEach(id => $(id).disabled = s.running || !s.ps5);
+    $('#deploybtn').disabled = s.running || !s.ps5;
     $('#rel').disabled = s.running; $('#project').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → ' + s.title_id;
-    $('#deploysub').textContent = 'FTP nach /data/homebrew/' + s.title_id;
-    if (!$('#project').options.length) {
-      Object.entries(s.projects).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; $('#project').appendChild(o); });
-    }
+    $('#deploybtn').title = 'FTP nach /data/homebrew/' + s.title_id;
+    if (!$('#project').options.length) fillSelect($('#project'), Object.entries(s.projects));
     if (document.activeElement !== $('#project')) $('#project').value = s.project;
     if (shownProject !== null && shownProject !== s.project) loadReleases(false);
     shownProject = s.project;
-    if (!modelsShown) {
-      modelsShown = true;
-      Object.entries(s.models).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#model').appendChild(o); });
-    }
-    if (!$('#lang').options.length) {
-      Object.entries(s.languages).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#lang').appendChild(o); });
-    }
+    if (!$('#model').options.length) fillSelect($('#model'), Object.entries(s.models).map(([v, t]) => [v, t + ' (' + v + ')']));
+    if (!$('#lang').options.length) fillSelect($('#lang'), Object.entries(s.languages).map(([v, t]) => [v, t + ' (' + v + ')']));
     if (document.activeElement !== $('#model')) $('#model').value = s.model;
     if (document.activeElement !== $('#lang')) $('#lang').value = s.language;
     $('#nup').textContent = s.nup || 'keine .nup gefunden';
@@ -164,6 +235,16 @@ async function refresh() {
     const u = s.updates, ud = $('#upd');
     if (u) { ud.textContent = (u.update ? 'es gibt etwas zu tun' : 'alles aktuell') + ' (gebaut: ' + (u.built || 'nichts') +
       ', gewählt: ' + (u.want || u.latest || '?') + ', geprüft ' + u.time + ')'; ud.className = u.update ? 'run' : 'ok'; }
+    else { ud.textContent = 'noch nicht geprüft'; ud.className = ''; }
+    showUpdate(s);
+    // ein Lauf ist zu Ende: was er geändert haben kann, neu laden (nach der Update-Prüfung auch die Release-Liste)
+    if (lastEnded !== s.ended) {
+      const first = lastEnded === undefined;
+      lastEnded = s.ended;
+      loadSaves(); loadTitles();
+      if (!first && !s.running && ['check', 'update', 'all'].includes(s.stage)) loadReleases(true);
+    }
+    if (busy !== s.running || psReady !== !!s.ps5) { busy = s.running; psReady = !!s.ps5; loadTitles(); }
     if (s.log !== lastLog) { lastLog = s.log; next = 0; $('#log').textContent = ''; }
   } catch (e) { $('#state').textContent = 'keine Verbindung'; }
   try {
@@ -179,96 +260,88 @@ async function refresh() {
     next = l.next;
   } catch (e) {}
 }
-document.querySelectorAll('button[data-stage]').forEach(b => b.onclick = async () => {
-  const r = await api('/api/run?stage=' + b.dataset.stage, { method: 'POST' });
-  if (!r.ok) alert(r.msg);
-  next = 0; lastLog = null; refresh();
-});
-async function loadReleases(refresh) {
+document.querySelectorAll('button[data-stage]').forEach(b => b.onclick = () => post('/api/run?stage=' + b.dataset.stage));
+
+// ---- Release, Projekt, Konsole, Sprache ----
+async function loadReleases(force) {
   const sel = $('#rel'), msg = $('#relmsg');
   try {
-    const r = await api('/api/releases' + (refresh ? '?refresh=1' : ''));
+    const r = await api('/api/releases' + (force ? '?refresh=1' : ''));
     const opts = [['latest', 'latest: neuestes Release']].concat(r.releases.map(x => {
       const notes = [x.kind === 'pre' ? 'Vorab' : '', x.date, x.appimage === false ? 'ohne Linux-AppImage' : ''].filter(Boolean);
       return [x.tag, x.tag + (notes.length ? ' (' + notes.join(', ') + ')' : '')];
     }));
     if (!opts.some(o => o[0] === r.ref)) opts.push([r.ref, r.ref]);
-    sel.innerHTML = '';
-    opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
+    fillSelect(sel, opts);
     sel.value = r.ref;
-    msg.textContent = r.error ? r.error : r.releases.length + ' Releases (' + r.source + '). Gebaut wird die Auswahl bei „Alles bauen“.';
+    msg.textContent = r.error ? r.error : r.releases.length + ' Releases (' + r.source + ', ' + new Date().toLocaleTimeString('de-DE') + '). Gebaut wird die Auswahl bei „Alles bauen“.';
   } catch (e) { msg.textContent = 'Release-Liste nicht ladbar'; }
 }
-$('#rel').onchange = async () => {
-  const r = await api('/api/ref?ref=' + encodeURIComponent($('#rel').value), { method: 'POST' });
-  if (!r.ok) { alert(r.msg); loadReleases(false); }
-  refresh();
-};
-$('#project').onchange = async () => {
-  const r = await api('/api/project?project=' + encodeURIComponent($('#project').value), { method: 'POST' });
-  if (!r.ok) alert(r.msg);
-  refresh();
-};
-$('#model').onchange = async () => {
-  const r = await api('/api/model?model=' + encodeURIComponent($('#model').value), { method: 'POST' });
-  if (!r.ok) alert(r.msg);
-  refresh();
-};
-$('#lang').onchange = async () => {
-  const r = await api('/api/language?language=' + encodeURIComponent($('#lang').value), { method: 'POST' });
-  if (!r.ok) alert(r.msg);
-  refresh();
-};
-const SAVE_NAMES = { longshot: 'Longshot', heylisten: 'HeyListen', fork: 'Longshot-Fork' };
-let savesData = null;
-function fmtIso(t) { return t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '?'; }
-function fillSelect(sel, opts) {
-  const keep = sel.value; sel.innerHTML = '';
-  opts.forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); });
-  if (opts.some(o => o[0] === keep)) sel.value = keep;
-}
+async function choose(path) { const r = await api(path, { method: 'POST' }); if (!r.ok) alert(r.msg); refresh(); return r; }
+$('#rel').onchange = async () => { const r = await choose('/api/ref?ref=' + encodeURIComponent($('#rel').value)); if (!r.ok) loadReleases(false); };
+$('#project').onchange = () => choose('/api/project?project=' + encodeURIComponent($('#project').value));
+$('#model').onchange = () => choose('/api/model?model=' + encodeURIComponent($('#model').value));
+$('#lang').onchange = () => choose('/api/language?language=' + encodeURIComponent($('#lang').value));
+$('#relload').onclick = () => loadReleases(true);
+
+// ---- Spielstände und Einstellungen ----
 async function loadSaves() {
   try { savesData = await api('/api/saves'); } catch (e) { return; }
-  const st = savesData.status, box = $('#savecards');
-  box.innerHTML = '';
-  if (!st) { box.innerHTML = '<div class="msg">' + (savesData.ps5 ? 'noch nicht gelesen' : 'PS5_HOST nicht gesetzt') + '</div>'; }
-  else {
+  const st = savesData.status, box = $('#savecards'), sbox = $('#setcards');
+  box.innerHTML = ''; sbox.innerHTML = '';
+  if (!st) {
+    const m = '<div class="msg">' + (savesData.ps5 ? 'noch nicht gelesen' : 'PS5_HOST nicht gesetzt') + '</div>';
+    box.innerHTML = m; sbox.innerHTML = m;
+  } else {
+    const digests = {};
+    Object.entries(st.titles).forEach(([k, t]) => { if (t.settings) (digests[t.settings.digest] = digests[t.settings.digest] || []).push(k); });
     Object.entries(st.titles).forEach(([k, t]) => {
-      const d = document.createElement('div'); d.className = 'savecard';
+      const d = document.createElement('div'); d.className = 'card';
       let tag = '';
       if (st.same && t.present) tag = '<span class="tag same">alle gleich</span>';
       else if (t.present) {
         if (st.newer === k) tag += '<span class="tag new">neuester</span>';
-        if (t.same_as && t.same_as.length) tag += '<span class="tag same">gleich wie ' + t.same_as.map(o => SAVE_NAMES[o]).join(', ') + '</span>';
+        if (t.same_as && t.same_as.length) tag += '<span class="tag same">gleich wie ' + t.same_as.map(o => NAMES[o]).join(', ') + '</span>';
       }
-      d.innerHTML = '<b>' + t.label + '</b> <span class="msg">' + t.title_id + '</span>' + tag +
+      d.innerHTML = '<b>' + esc(t.label) + '</b> <span class="msg">' + esc(t.title_id) + '</span>' + tag +
         '<small>' + (t.present ? t.files + ' Dateien, ' + Math.max(1, Math.round(t.bytes / 1024)) + ' KB, geändert ' + fmtIso(t.newest)
                              : 'keine Spielstände' + (t.installed ? '' : ' (Title nicht installiert)')) + '</small>';
       box.appendChild(d);
+      const e = document.createElement('div'); e.className = 'card';
+      const s = t.settings, same = s ? digests[s.digest].filter(o => o !== k) : [];
+      e.innerHTML = '<b>' + esc(t.label) + '</b> <span class="msg">' + esc(s ? s.file : '') + '</span>' +
+        (same.length ? '<span class="tag same">gleich wie ' + same.map(o => NAMES[o]).join(', ') + '</span>' : '') +
+        '<small>' + (s ? Math.max(1, Math.round(s.bytes / 1024)) + ' KB, geändert ' + fmtIso(s.time) +
+          (s.prompts !== null && s.prompts !== undefined ? ', Button prompts ' + ({ '0': 'Auto', '1': 'Switch', '2': 'Xbox', '3': 'PS4', '4': 'PS5', '5': 'Steam Deck', '6': 'Tastatur' }[s.prompts] || s.prompts) : '')
+          : 'keine Einstellungen auf der PS5' + (t.installed ? ' (noch nichts geändert)' : ' (Title nicht installiert)')) + '</small>';
+      sbox.appendChild(e);
     });
-    const m = document.createElement('div'); m.className = 'msg'; m.textContent = 'gelesen ' + fmtIso(st.time);
-    box.appendChild(m);
+    [box, sbox].forEach(b => { const m = document.createElement('div'); m.className = 'msg'; m.textContent = 'gelesen ' + fmtIso(st.time); b.appendChild(m); });
   }
-  const titles = Object.entries(SAVE_NAMES);
+  const titles = Object.entries(NAMES);
   if (!$('#savefrom').options.length) {
     fillSelect($('#savefrom'), titles); fillSelect($('#saveto'), titles); fillSelect($('#restoreto'), titles);
+    fillSelect($('#setrestoreto'), titles);
+    fillSelect($('#setfrom'), [['longshot', 'Longshot'], ['fork', 'Longshot-Fork']]);
+    fillSelect($('#setto'), [['fork', 'Longshot-Fork'], ['longshot', 'Longshot']]);
     $('#saveto').value = 'heylisten';
   }
   if (st && st.newer && document.activeElement !== $('#savefrom') && !$('#savefrom').dataset.touched) {
     $('#savefrom').value = st.newer;
-    if ($('#saveto').value === st.newer) $('#saveto').value = Object.keys(SAVE_NAMES).find(k => k !== st.newer);
+    if ($('#saveto').value === st.newer) $('#saveto').value = Object.keys(NAMES).find(k => k !== st.newer);
   }
+  const when = n => n.slice(6, 8) + '.' + n.slice(4, 6) + '. ' + n.slice(9, 11) + ':' + n.slice(11, 13);
   fillSelect($('#savebackup'), savesData.backups.length ? savesData.backups.map(b => [b.name,
-    b.title + ', gesichert ' + b.name.slice(6, 8) + '.' + b.name.slice(4, 6) + '. ' + b.name.slice(9, 11) + ':' + b.name.slice(11, 13) +
-    ' (' + b.files + ' Dateien, Stand ' + fmtIso(b.newest) + ')']) : [['', 'noch keine Backups']]);
-  $('#savehist').innerHTML = savesData.history.slice(0, 5).map(h => fmtIso(h.time) + ': ' +
-    (h.action === 'copy' ? SAVE_NAMES[h.from] + ' → ' + SAVE_NAMES[h.to] : 'Backup → ' + SAVE_NAMES[h.to])).join('<br>');
+    b.title + ', gesichert ' + when(b.name) + ' (' + b.files + ' Dateien, Stand ' + fmtIso(b.newest) + ')']) : [['', 'noch keine Backups']]);
+  fillSelect($('#setsaved'), (savesData.settings_backups || []).length ? savesData.settings_backups.map(b => [b.name,
+    b.title + ', gesichert ' + when(b.name) + ' (' + b.file + ', ' + b.name.split('-').slice(3).join('-') + ')']) : [['', 'noch keine Sicherungen']]);
+  $('#savehist').innerHTML = savesData.history.slice(0, 6).map(h => fmtIso(h.time) + ': ' + ({
+    copy: 'Spielstände ' + NAMES[h.from] + ' → ' + NAMES[h.to], restore: 'Backup → ' + NAMES[h.to],
+    'settings-copy': 'Einstellungen ' + NAMES[h.from] + ' → ' + NAMES[h.to], 'settings-restore': 'Einstellungen-Sicherung → ' + NAMES[h.to]
+  }[h.action] || h.action)).join('<br>');
 }
 $('#savefrom').onchange = () => { $('#savefrom').dataset.touched = '1'; };
-$('#savesread').onclick = async () => {
-  const r = await api('/api/run?stage=saves-status', { method: 'POST' });
-  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
-};
+$('#savesread').onclick = () => post('/api/run?stage=saves-status');
 $('#savecopy').onclick = async () => {
   const f = $('#savefrom').value, t = $('#saveto').value;
   if (f === t) { alert('Quelle und Ziel müssen verschieden sein'); return; }
@@ -276,20 +349,30 @@ $('#savecopy').onclick = async () => {
   let warn = '';
   if (st && st.newer && st.newer === t) warn = '\n\nACHTUNG: das Ziel ist nach Dateidatum NEUER als die Quelle.';
   if (!st) warn = '\n\nDie Spielstände wurden noch nicht gelesen.';
-  if (!confirm('Spielstände von ' + SAVE_NAMES[f] + ' nach ' + SAVE_NAMES[t] + ' kopieren?\n\nDas Ziel wird vorher gesichert und danach mit der Quelle gespiegelt. Beide Spiele müssen auf der PS5 beendet sein.' + warn)) return;
-  const r = await api('/api/saves/copy?from=' + f + '&to=' + t, { method: 'POST' });
-  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+  if (!confirm('Spielstände von ' + NAMES[f] + ' nach ' + NAMES[t] + ' kopieren?\n\nDas Ziel wird vorher gesichert und danach mit der Quelle gespiegelt. Beide Spiele müssen auf der PS5 beendet sein.' + warn)) return;
+  post('/api/saves/copy?from=' + f + '&to=' + t);
 };
-$('#saverestore').onclick = async () => {
+$('#saverestore').onclick = () => {
   const b = $('#savebackup').value, t = $('#restoreto').value;
   if (!b) return;
-  if (!confirm('Backup ' + b + ' nach ' + SAVE_NAMES[t] + ' zurückspielen?\n\nDer jetzige Stand dort wird vorher gesichert.')) return;
-  const r = await api('/api/saves/restore?backup=' + encodeURIComponent(b) + '&to=' + t, { method: 'POST' });
-  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+  if (!confirm('Backup ' + b + ' nach ' + NAMES[t] + ' zurückspielen?\n\nDer jetzige Stand dort wird vorher gesichert.')) return;
+  post('/api/saves/restore?backup=' + encodeURIComponent(b) + '&to=' + t);
 };
-const PROJ_NAMES = { longshot: 'Projekt Longshot', heylisten: 'Projekt HeyListen', fork: 'Projekt Longshot-Fork' };
-let titlesData = null, psReady = false, busy = false;
-function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+$('#setbackup').onclick = () => post('/api/run?stage=settings-backup');
+$('#setcopy').onclick = () => {
+  const f = $('#setfrom').value, t = $('#setto').value;
+  if (f === t) { alert('Quelle und Ziel müssen verschieden sein'); return; }
+  if (!confirm('Einstellungen von ' + NAMES[f] + ' nach ' + NAMES[t] + ' kopieren?\n\nDie Einstellungen des Ziels werden vorher gesichert. Beide Spiele müssen beendet sein.')) return;
+  post('/api/settings/copy?from=' + f + '&to=' + t);
+};
+$('#setrestore').onclick = () => {
+  const b = $('#setsaved').value, t = $('#setrestoreto').value;
+  if (!b) return;
+  if (!confirm('Einstellungen ' + b + ' nach ' + NAMES[t] + ' zurückspielen?\n\nDie jetzigen Einstellungen dort werden vorher gesichert. Das Spiel muss beendet sein.')) return;
+  post('/api/settings/restore?backup=' + encodeURIComponent(b) + '&to=' + t);
+};
+
+// ---- Titles auf der PS5 ----
 async function loadTitles() {
   try { titlesData = await api('/api/titles'); } catch (e) { return; }
   const st = titlesData.status, box = $('#titlecards');
@@ -298,7 +381,7 @@ async function loadTitles() {
   const count = {};
   st.titles.forEach(t => { const n = (t.name || '').toLowerCase(); count[n] = (count[n] || 0) + 1; });
   st.titles.forEach(t => {
-    const d = document.createElement('div'); d.className = 'savecard';
+    const d = document.createElement('div'); d.className = 'card';
     const origin = t.tag ? esc(t.repo || '') + ' ' + esc(t.tag) + (t.model ? ', ' + esc(t.model) : '') + ', gebaut ' + esc(t.built || '?')
       : 'Herkunft unbekannt' + (t.project ? ' (Title-ID von ' + PROJ_NAMES[t.project] + ')' : '') + (t.eboot_time ? ', eboot.bin vom ' + fmtIso(t.eboot_time) : '');
     d.innerHTML = '<b>' + esc(t.name || '(ohne Namen)') + '</b> <span class="msg">' + esc(t.id) + '</span>' +
@@ -317,27 +400,22 @@ async function loadTitles() {
   box.querySelectorAll('button[data-del]').forEach(b => { b.disabled = busy || !psReady; b.onclick = () => deleteTitle(b.dataset.del); });
 }
 function titleOf(id) { return (titlesData && titlesData.status && titlesData.status.titles.find(t => t.id === id)) || {}; }
-async function renameTitle(id) {
+function renameTitle(id) {
   const t = titleOf(id);
   const n = prompt('Neuer angezeigter Name für ' + id + ' (jetzt: ' + (t.name || '?') + '), 1 bis 40 Zeichen:', t.name || '');
   if (n === null || !n.trim()) return;
-  const r = await api('/api/titles/rename?id=' + id + '&name=' + encodeURIComponent(n.trim()), { method: 'POST' });
-  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+  post('/api/titles/rename?id=' + id + '&name=' + encodeURIComponent(n.trim()));
 }
-async function deleteTitle(id) {
+function deleteTitle(id) {
   const t = titleOf(id);
   if (!confirm('Title ' + id + ' „' + (t.name || '?') + '“ auf der PS5 LÖSCHEN?\n\n' + (t.tag ? (t.repo || '') + ' ' + t.tag : 'Herkunft unbekannt') +
-    ', ' + Math.round((t.bytes || 0) / 1048576) + ' MB.\n' + (t.saves ? 'Die ' + t.saves + ' Spielstand-Dateien werden vorher nach /config/saves/backups gesichert.' : 'Keine Spielstände darin.') +
+    ', ' + Math.round((t.bytes || 0) / 1048576) + ' MB.\n' + (t.saves ? 'Die ' + t.saves + ' Spielstand-Dateien und die Einstellungen werden vorher gesichert.' : 'Keine Spielstände darin; die Einstellungen werden gesichert.') +
     '\n\nDas Spiel muss auf der PS5 beendet sein.')) return;
   if (prompt('Zur Sicherheit die Title-ID eintippen:') !== id) { alert('nicht gelöscht'); return; }
-  const r = await api('/api/titles/delete?id=' + id, { method: 'POST' });
-  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+  post('/api/titles/delete?id=' + id);
 }
-$('#titlesread').onclick = async () => {
-  const r = await api('/api/run?stage=titles-list', { method: 'POST' });
-  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
-};
-$('#relload').onclick = () => loadReleases(true);
+$('#titlesread').onclick = () => post('/api/run?stage=titles-list');
+
 $('#stop').onclick = () => api('/api/stop', { method: 'POST' }).then(refresh);
 loadReleases(false); refresh(); setInterval(refresh, 2000);
 </script>

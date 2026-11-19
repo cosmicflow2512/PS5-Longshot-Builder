@@ -489,8 +489,17 @@ case $stage in
         log "Backup zurueckspielen: ${SAVES_BACKUP:-?} -> ${SAVES_TO:-?}"
         python3 -u /app/scripts/saves.py restore --backup "${SAVES_BACKUP:-}" --to "${SAVES_TO:-}"
         python3 -u /app/scripts/saves.py status ;;
+    settings-backup) log "Einstellungen sichern"; python3 -u /app/scripts/saves.py settings-backup ;;
+    settings-copy)
+        log "Einstellungen kopieren: ${SAVES_FROM:-?} -> ${SAVES_TO:-?}"
+        python3 -u /app/scripts/saves.py settings-copy --from "${SAVES_FROM:-}" --to "${SAVES_TO:-}"
+        python3 -u /app/scripts/saves.py status ;;
+    settings-restore)
+        log "Einstellungen zurueckspielen: ${SAVES_BACKUP:-?} -> ${SAVES_TO:-?}"
+        python3 -u /app/scripts/saves.py settings-restore --backup "${SAVES_BACKUP:-}" --to "${SAVES_TO:-}"
+        python3 -u /app/scripts/saves.py status ;;
     titles-list) log "Zelda-Titles auf der PS5 lesen"; python3 -u /app/scripts/titles.py list ;;
     titles-delete) log "Title $TITLES_ID auf der PS5 loeschen"; python3 -u /app/scripts/titles.py delete --id "$TITLES_ID" ;;
     titles-rename) log "Title $TITLES_ID umbenennen"; python3 -u /app/scripts/titles.py rename --id "$TITLES_ID" --name "$TITLES_NAME" ;;
-    *) die "unbekannte Stufe: $stage (check|update|build|deploy|all|saves-status|saves-copy|saves-restore|titles-list|titles-delete|titles-rename)" ;;
+    *) die "unbekannte Stufe: $stage (check|update|build|deploy|all|saves-status|saves-copy|saves-restore|settings-backup|settings-copy|settings-restore|titles-list|titles-delete|titles-rename)" ;;
 esac

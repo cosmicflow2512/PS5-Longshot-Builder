@@ -107,6 +107,25 @@ kopieren, im Spiel prüfen; zur Not das Backup zurückspielen.
 Während des Kopierens darf keines der beiden Spiele auf der PS5 laufen. „Neuer“ richtet sich nach den Dateizeiten, die der
 FTP-Server der PS5 meldet (bei Servern ohne `MLSD`/`MDTM` nur auf die Minute genau).
 
+## Einstellungen des Spiels
+
+Was du im Spiel einstellst (Menü, Grafik, Steuerung, Button prompts), steht in einer Datei im Title-Ordner neben der
+`eboot.bin`: `longshot_options.ini` bei Longshot und dem Fork (`host/options_path.c`: ohne `--user` und `HOS_OPTIONS_FILE`
+neben dem Spiel), `hookshot_options.ini` bei HeyListen (`host/ps5/hos_sdl_ps5.c`). Deploy und Build lassen sie unverändert.
+
+Im Reiter „Spielstände & Einstellungen“ zeigt „Von der PS5 lesen“ die Datei jedes Titles (Größe, Datum, gewählte Button
+prompts, gleich wie welche anderen). „Einstellungen jetzt sichern“ legt sie nach `/config/saves/settings/<Zeit>-<Title>-<Anlass>/`
+(die letzten 30). Gesichert wird sie außerdem bei jedem Sichern der Spielstände und vor dem Löschen eines Titles. Zurückspielen
+und Kopieren sichern das Ziel vorher; kopiert wird nur zwischen Longshot und Longshot-Fork, die dieselbe Datei haben. Das Spiel
+muss dabei beendet sein, sonst schreibt es seine Einstellungen zurück.
+
+## Oberfläche
+
+Oben stehen das Projekt und die Aktionen (Updates prüfen, Alles bauen, Builder aktualisieren, Build, Auf die PS5 kopieren,
+Abbrechen). Nach „Auf Updates prüfen“ lädt die Release-Liste neu, und eine Zeile darunter sagt, ob es etwas zu bauen gibt, mit
+„Alles bauen“ direkt daneben. Darunter die Reiter Build (Release, Konsole, Sprache, Stand), Spielstände & Einstellungen und
+Titles auf der PS5; rechts das Log.
+
 ## Titles auf der PS5
 
 „Titles von der PS5 lesen“ zeigt alle Zelda-Titles unter `/data/homebrew` (`scripts/titles.py`). Erkannt werden sie an der

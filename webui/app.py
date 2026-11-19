@@ -29,7 +29,8 @@ PROJECTS["fork"] = {"label": "Longshot-Fork (cosmicflow2512/PS5_Longshot_Cosi, m
                     "repo": os.environ.get("FORK_REPO", "cosmicflow2512/PS5_Longshot_Cosi"), "appimage": "LongshotPS5Builder",
                     "title_id": "PPSA99198", "state": os.path.join(CONFIG, "fork"), "ref_env": "FORK_REF"}
 PROJECT_FILE = os.path.join(CONFIG, "project")
-STAGES = ("check", "all", "update", "build", "deploy", "saves-status", "titles-list")
+STAGES = ("check", "all", "update", "build", "deploy", "saves-status", "titles-list", "settings-backup")
+OPTIONS_FILE = {"longshot": "longshot_options.ini", "heylisten": "hookshot_options.ini", "fork": "longshot_options.ini"}   # (saves.py OPTIONS)
 TITLE_ID_RE = re.compile(r"^[A-Z]{4}[0-9]{5}$")
 SAVE_TITLES = ("longshot", "heylisten", "fork")   # (scripts/saves.py TITLES)
 SAVES_DIR = os.path.join(CONFIG, "saves")
@@ -238,9 +239,13 @@ def saves_info():
         r = subprocess.run(["python3", "/app/scripts/saves.py", "backups"], capture_output=True, text=True, timeout=30,
                            env=dict(os.environ, CONFIG_DIR=CONFIG))
         backups = json.loads(r.stdout) if r.returncode == 0 else []
+        r = subprocess.run(["python3", "/app/scripts/saves.py", "settings-backups"], capture_output=True, text=True, timeout=30,
+                           env=dict(os.environ, CONFIG_DIR=CONFIG))
+        settings = json.loads(r.stdout) if r.returncode == 0 else []
     except (OSError, ValueError, subprocess.TimeoutExpired):
-        backups = []
-    return {"status": read_json(os.path.join(SAVES_DIR, "status.json")), "backups": backups,
+        backups, settings = [], []
+    return {"status": read_json(os.path.join(SAVES_DIR, "status.json")), "backups": backups, "settings_backups": settings,
+            "options_files": OPTIONS_FILE,
             "history": (read_json(os.path.join(SAVES_DIR, "history.json")) or [])[:10],
             "ps5": bool(os.environ.get("PS5_HOST", "").strip())}
 
@@ -334,6 +339,18 @@ class H(http.server.BaseHTTPRequestHandler):
             if not BACKUP_RE.match(name) or dst not in SAVE_TITLES or not os.path.isdir(os.path.join(SAVES_DIR, "backups", name)):
                 return self.send(400, json.dumps({"ok": False, "msg": "unbekanntes Backup oder Ziel"}))
             ok, msg = start("saves-restore", {"SAVES_BACKUP": name, "SAVES_TO": dst})
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
+        if u.path == "/api/settings/copy":
+            src, dst = q.get("from", [""])[0], q.get("to", [""])[0]
+            if src not in OPTIONS_FILE or dst not in OPTIONS_FILE or src == dst or OPTIONS_FILE[src] != OPTIONS_FILE[dst]:
+                return self.send(400, json.dumps({"ok": False, "msg": "nur zwischen Longshot und Longshot-Fork (gleiche Datei)"}))
+            ok, msg = start("settings-copy", {"SAVES_FROM": src, "SAVES_TO": dst})
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
+        if u.path == "/api/settings/restore":
+            name, dst = q.get("backup", [""])[0], q.get("to", [""])[0]
+            if not BACKUP_RE.match(name) or dst not in OPTIONS_FILE or not os.path.isdir(os.path.join(SAVES_DIR, "settings", name)):
+                return self.send(400, json.dumps({"ok": False, "msg": "unbekannte Sicherung oder Ziel"}))
+            ok, msg = start("settings-restore", {"SAVES_BACKUP": name, "SAVES_TO": dst})
             return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
         if u.path in ("/api/titles/delete", "/api/titles/rename"):
             tid = q.get("id", [""])[0]
