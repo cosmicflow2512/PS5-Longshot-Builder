@@ -88,6 +88,51 @@ copy_lossless() {
     echo "  Lossless.dll: $LOSSLESS_DLL -> $TITLE/lossless/Lossless.dll ($(du -h "$LOSSLESS_DLL" | cut -f1))"
 }
 
+# AMD FSR 4 des Forks (PR #41, gpu/vk/vk_fsr4.cpp): der PS5-Code sucht fertige Shader und Gewichte unter
+# /app0/fsr4/lite/<tier>/ bzw. /app0/fsr4/int8/<tier>/ (docs/PS5_FSR4.md). Sie kommen aus dem Release von
+# Mob1K7105/beamng-fsr4-linux, aus dem auch der PS5-Code stammt: einmal laden, gegen die feste SHA-256 und die
+# SHA256SUMS im Archiv pruefen, unter $CONFIG_DIR/fsr4 behalten. FSR4_ASSETS: lite (Standard), all (dazu navi2 als int8),
+# off. Die 8K-Stufen (t4320) kommen nicht mit.
+FSR4_VERSION=0.3.0
+FSR4_SHA256=d9cdd75f996b8ac84d3679849d912d68fdd22dd821cead291d6a1be1be2a88c3
+fsr4_fetch() {
+    local dir=$CONFIG_DIR/fsr4/$FSR4_VERSION
+    [[ -f $dir/.ok ]] && { echo "$dir"; return 0; }
+    local tmp; tmp=$(mktemp -d)
+    local url=https://github.com/Mob1K7105/beamng-fsr4-linux/releases/download/v$FSR4_VERSION/beamng-fsr4-linux.tar.gz
+    echo "  FSR 4: lade $url" >&2
+    if ! "${CURL[@]}" -o "$tmp/a.tgz" "$url"; then rm -rf "$tmp"; echo "  FSR 4: Download fehlgeschlagen" >&2; return 1; fi
+    if [[ $(sha256sum "$tmp/a.tgz" | cut -d' ' -f1) != "$FSR4_SHA256" ]]; then
+        rm -rf "$tmp"; echo "  FSR 4: SHA-256 des Archivs passt nicht, nichts uebernommen" >&2; return 1; fi
+    tar xzf "$tmp/a.tgz" -C "$tmp"
+    local src=$tmp/beamng-fsr4-linux-$FSR4_VERSION
+    if ! (cd "$src" && grep -E '  assets/(lite|navi2)/' SHA256SUMS | sha256sum -c --quiet); then
+        rm -rf "$tmp"; echo "  FSR 4: SHA256SUMS im Archiv passen nicht, nichts uebernommen" >&2; return 1; fi
+    rm -rf "$dir"; mkdir -p "$dir"
+    cp -r "$src/assets/lite" "$src/assets/navi2" "$src/assets/NOTICE.md" "$src/notices/AMD-SDK-LICENSE.md" "$dir/"
+    touch "$dir/.ok"; rm -rf "$tmp"
+    echo "$dir"
+}
+copy_fsr4() {
+    [[ $PROJECT == fork && -d $TITLE ]] || return 0   # (nur der Fork hat FSR 4 fuer die PS5)
+    local mode=${FSR4_ASSETS:-lite}
+    case $mode in
+        off) rm -rf "$TITLE/fsr4"; echo "  FSR 4: aus (FSR4_ASSETS=off)"; return 0 ;;
+        lite|all) ;;
+        *) echo "  Hinweis: FSR4_ASSETS=$mode unbekannt (lite, all, off): ohne FSR 4"; return 0 ;;
+    esac
+    local dir; dir=$(fsr4_fetch) || { echo "  Hinweis: ohne FSR 4 weiter"; return 0; }
+    rm -rf "$TITLE/fsr4"; mkdir -p "$TITLE/fsr4/lite"
+    local t
+    for t in t1080_m0 t1080_m1 t2160_m0 t2160_m1; do cp -r "$dir/lite/$t" "$TITLE/fsr4/lite/"; done
+    if [[ $mode == all ]]; then
+        mkdir -p "$TITLE/fsr4/int8"
+        for t in t1080_m0 t1080_m1 t2160_m0 t2160_m1; do cp -r "$dir/navi2/$t" "$TITLE/fsr4/int8/"; done
+    fi
+    cp -f "$dir/NOTICE.md" "$dir/AMD-SDK-LICENSE.md" "$TITLE/fsr4/"
+    echo "  FSR 4: beamng-fsr4-linux v$FSR4_VERSION ($mode) -> $TITLE/fsr4 ($(du -sh "$TITLE/fsr4" | cut -f1))"
+}
+
 # language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c).
 write_language() {
     [[ -n $LANGUAGE && -d $TITLE ]] || return 0
@@ -340,6 +385,7 @@ stage_build() {
     [[ -f $TITLE/eboot.bin && -f $TITLE/image.bin ]] || die "eboot.bin oder image.bin fehlt nach dem Build in $TITLE"
     write_language
     copy_lossless
+    copy_fsr4
     printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s"}\n' "$(builder_tag)" "$MODEL" "$(date '+%d.%m.%Y %H:%M')" \
         "$(basename "${nup:-}")" > "$STATE/build-info.json"
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
@@ -352,6 +398,7 @@ stage_deploy() {
     [[ -f $TITLE/eboot.bin ]] || die "kein Title unter $TITLE (erst build)"
     write_language
     copy_lossless
+    copy_fsr4
     local args=(--dist "$TITLE")
     if [[ ${UPLOAD_NUP:-false} == true ]]; then
         local nup; nup=$(find_nup)

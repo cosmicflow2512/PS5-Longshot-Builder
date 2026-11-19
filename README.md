@@ -73,6 +73,11 @@ In der Web-UI unter **Projekt** (gespeichert in `/config/project`, geht vor `PRO
 Lossless Scaling). #35 verlegt das Title auf `PPSA99198`, weil das Homebrew reUndr `PPSA99025` nutzt. Mit dem Ordner
 „Lossless Scaling“ im Template (nach `/lossless`, `LOSSLESS_DLL`) legen Build und Deploy des Forks die eigene `Lossless.dll`
 als `lossless/Lossless.dll` ins Title, wo das Spiel sie sucht (`gpu/vk/vk_framegen.cpp` von PR #21).
+Für AMD FSR 4 (PR #41) lädt der Container einmal das Release v0.3.0 von
+[beamng-fsr4-linux](https://github.com/Mob1K7105/beamng-fsr4-linux) (Herkunft des PS5-Codes), prüft es gegen eine feste
+SHA-256 und die `SHA256SUMS` im Archiv, behält es unter `/config/fsr4` und legt bei Build und Deploy `fsr4/lite/`
+(Stufen 1080p und 2160p, mit AMDs Lizenzhinweis) ins Title. `FSR4_ASSETS=all` nimmt zusätzlich `fsr4/int8/` (navi2) mit,
+`FSR4_ASSETS=off` lässt FSR 4 weg.
 
 Beide Titles können nebeneinander auf der PS5 liegen. Konsole und Spielsprache gelten für beide Projekte. Die `.nup`
 sucht PS5_HeyListen an denselben Orten wie Longshot (`host/ps5/win32_ps5.c` stammt von dort).
