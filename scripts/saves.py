@@ -36,7 +36,7 @@ HISTORY = os.path.join(SAVES, "history.json")
 KEEP_BACKUPS = 30
 MAX_DOWNLOAD = 256 << 20   # (groessere Ordner werden fuer den Vergleich nicht geladen: nur Groessen und Zeiten)
 MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
-BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z]+-[a-z-]+$")
+BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]+-[a-z-]+$")   # (key: Projekt oder die Title-ID klein, scripts/titles.py)
 
 
 def say(text):
@@ -468,7 +468,7 @@ def backups():
         for n in sorted((n for n in os.listdir(BACKUPS) if BACKUP_RE.match(n)), reverse=True):
             files = local_files(os.path.join(BACKUPS, n))
             key = n.split("-")[2]
-            out.append({"name": n, "title": TITLES.get(key, (key, ""))[0], "files": len(files),
+            out.append({"name": n, "title": TITLES.get(key, (key.upper(), ""))[0], "files": len(files),
                         "bytes": sum(s for s, _ in files.values()),
                         "newest": iso(max((t for _, t in files.values()), default=0)) if files else None})
     return out

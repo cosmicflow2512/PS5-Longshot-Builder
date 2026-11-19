@@ -13,6 +13,7 @@
 #   build.sh deploy   Title per FTP nach /data/homebrew/PPSA99025 auf der PS5 (scripts/deploy.py)
 #   build.sh all      update + build (+ deploy bei AUTO_DEPLOY=true)
 #   build.sh saves-status | saves-copy | saves-restore   Spielstaende auf der PS5 (scripts/saves.py)
+#   build.sh titles-list | titles-delete | titles-rename  Zelda-Titles auf der PS5 (scripts/titles.py)
 #
 # Die AppImage wird entpackt statt gemountet (in Docker gibt es kein FUSE). Ihr AppRun startet mit "--cli" die
 # pipeline.py des Releases mit deren Optionen (ps5/builder/package.py), und die bringt Python, clang/ld.lld (mit PS5-Ziel),
@@ -131,6 +132,33 @@ copy_fsr4() {
     fi
     cp -f "$dir/NOTICE.md" "$dir/AMD-SDK-LICENSE.md" "$TITLE/fsr4/"
     echo "  FSR 4: beamng-fsr4-linux v$FSR4_VERSION ($mode) -> $TITLE/fsr4 ($(du -sh "$TITLE/fsr4" | cut -f1))"
+}
+
+# Was der Title ueber sich mitbringt, fuer scripts/titles.py auf der PS5: build-info.json (Projekt, Repository, Release,
+# Konsole, Zeit) und der angezeigte Name aus $STATE/title_name (in der Web-UI unter "Titles auf der PS5" umbenannt).
+title_extras() {
+    [[ -d $TITLE ]] || return 0
+    if [[ -f $STATE/build-info.json ]]; then
+        PROJECT=$PROJECT REPO=$REPO python3 - "$STATE/build-info.json" "$TITLE/build-info.json" <<'PY' || true
+import json, os, sys
+j = json.load(open(sys.argv[1]))
+j.update(project=os.environ["PROJECT"], repo=os.environ["REPO"])
+open(sys.argv[2], "w").write(json.dumps(j) + "\n")
+PY
+    fi
+    local param=$TITLE/sce_sys/param.json name=""
+    [[ -s $STATE/title_name ]] && name=$(head -n1 "$STATE/title_name" | tr -d '\r')
+    [[ -n $name && -f $param ]] || return 0
+    TITLE_NAME=$name python3 - "$param" <<'PY' && echo "  angezeigter Name: $name"
+import json, os, sys
+p = sys.argv[1]
+j = json.load(open(p, encoding="utf-8"))
+lp = j.setdefault("localizedParameters", {})
+lp.setdefault("defaultLanguage", "en-US")
+for k in [k for k, v in lp.items() if isinstance(v, dict)] or [lp["defaultLanguage"]]:
+    lp.setdefault(k, {})["titleName"] = os.environ["TITLE_NAME"]
+open(p, "w", encoding="utf-8", newline="\n").write(json.dumps(j, indent=2, ensure_ascii=False) + "\n")
+PY
 }
 
 # language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c).
@@ -388,6 +416,7 @@ stage_build() {
     copy_fsr4
     printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s"}\n' "$(builder_tag)" "$MODEL" "$(date '+%d.%m.%Y %H:%M')" \
         "$(basename "${nup:-}")" > "$STATE/build-info.json"
+    title_extras
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
         chown -R "$PUID:$PGID" "$TITLE" 2>/dev/null || echo "  Hinweis: Besitzer von $TITLE nicht auf $PUID:$PGID gesetzt"
     fi
@@ -399,6 +428,7 @@ stage_deploy() {
     write_language
     copy_lossless
     copy_fsr4
+    title_extras
     local args=(--dist "$TITLE")
     if [[ ${UPLOAD_NUP:-false} == true ]]; then
         local nup; nup=$(find_nup)
@@ -459,5 +489,8 @@ case $stage in
         log "Backup zurueckspielen: ${SAVES_BACKUP:-?} -> ${SAVES_TO:-?}"
         python3 -u /app/scripts/saves.py restore --backup "${SAVES_BACKUP:-}" --to "${SAVES_TO:-}"
         python3 -u /app/scripts/saves.py status ;;
-    *) die "unbekannte Stufe: $stage (check|update|build|deploy|all|saves-status|saves-copy|saves-restore)" ;;
+    titles-list) log "Zelda-Titles auf der PS5 lesen"; python3 -u /app/scripts/titles.py list ;;
+    titles-delete) log "Title $TITLES_ID auf der PS5 loeschen"; python3 -u /app/scripts/titles.py delete --id "$TITLES_ID" ;;
+    titles-rename) log "Title $TITLES_ID umbenennen"; python3 -u /app/scripts/titles.py rename --id "$TITLES_ID" --name "$TITLES_NAME" ;;
+    *) die "unbekannte Stufe: $stage (check|update|build|deploy|all|saves-status|saves-copy|saves-restore|titles-list|titles-delete|titles-rename)" ;;
 esac

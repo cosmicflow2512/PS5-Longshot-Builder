@@ -107,6 +107,23 @@ kopieren, im Spiel prüfen; zur Not das Backup zurückspielen.
 Während des Kopierens darf keines der beiden Spiele auf der PS5 laufen. „Neuer“ richtet sich nach den Dateizeiten, die der
 FTP-Server der PS5 meldet (bei Servern ohne `MLSD`/`MDTM` nur auf die Minute genau).
 
+## Titles auf der PS5
+
+„Titles von der PS5 lesen“ zeigt alle Zelda-Titles unter `/data/homebrew` (`scripts/titles.py`). Erkannt werden sie an der
+Title-ID eines Projekts, am Namen in `sce_sys/param.json` oder an den Dateien der Ports. Zu jedem Title stehen Name, Title-ID,
+Herkunft (Repository, Release, Konsole, Build-Zeit), Größe und die Zahl der Spielstand-Dateien. Die Herkunft kommt aus
+`build-info.json`, die Build und Deploy seit dieser Version mit in den Title legen. Bei älteren Deploys steht stattdessen das
+Datum der `eboot.bin`.
+
+- **Umbenennen** ändert den angezeigten Namen (`titleName` für alle Sprachen in `param.json`) auf der PS5. Bei PPSA99025,
+  PPSA99026 und PPSA99198 merkt sich der Container den Namen, und Build und Deploy behalten ihn. Ob der Startbildschirm den
+  neuen Namen sofort zeigt, hängt von der Homebrew-Umgebung ab (ungeprüft).
+- **Löschen** sichert erst die Spielstände nach `/config/saves/backups` (`<Zeit>-<Projekt oder Title-ID>-vor-loeschen`,
+  zurückspielbar wie die anderen Backups), dann wird der ganze Ordner gelöscht. Zur Sicherheit muss die Title-ID eingetippt
+  werden.
+- Die **Title-ID** selbst lässt sich nicht ändern: Sie steht in `param.json` (`titleId`, `contentId`), im Kit des Builders und
+  in Pfaden des Spiels.
+
 ## Konsole
 
 In der Web-UI unter **Konsole** (gespeichert in `/config/model`, geht vor `MODEL`). Das Title wird für ein Modell gebaut

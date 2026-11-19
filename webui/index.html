@@ -41,6 +41,9 @@
   .row3 span { color:var(--dim); }
   .saves-act { display:grid; gap:6px; margin-top:6px; }
   .hist { font-size:12px; color:var(--dim); margin-top:8px; }
+  .tbtns { display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px; }
+  .tbtns button { text-align:center; padding:5px; font-size:12px; }
+  .tag.warn { color:var(--warn); border-color:#6b5a2f; }
 </style>
 </head>
 <body>
@@ -91,6 +94,12 @@
       <div class="hist" id="savehist"></div>
     </section>
     <section>
+      <h2>Titles auf der PS5</h2>
+      <button id="titlesread">Titles von der PS5 lesen<small>/data/homebrew per FTP: alle Zelda-Titles, Herkunft, Größe, Spielstände</small></button>
+      <div class="saves" id="titlecards"><div class="msg">noch nicht gelesen</div></div>
+      <div class="msg">Löschen sichert vorher die Spielstände des Titles (Backups oben). Umbenennen ändert den angezeigten Namen; bei Longshot, HeyListen und dem Fork behalten Build und Deploy ihn.</div>
+    </section>
+    <section>
       <h2>Stand</h2>
       <dl>
         <dt>Spiel</dt><dd id="nup">&ndash;</dd>
@@ -123,7 +132,9 @@ async function refresh() {
     else { st.textContent = 'bereit'; st.className = ''; }
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
     ['#savesread', '#savecopy', '#saverestore'].forEach(id => $(id).disabled = s.running || !s.ps5);
-    if (lastSavesEnd !== s.ended) { lastSavesEnd = s.ended; loadSaves(); }
+    $('#titlesread').disabled = s.running || !s.ps5;
+    if (busy !== s.running || psReady !== !!s.ps5) { busy = s.running; psReady = !!s.ps5; loadTitles(); }
+    if (lastSavesEnd !== s.ended) { lastSavesEnd = s.ended; loadSaves(); loadTitles(); }
     $('#rel').disabled = s.running; $('#project').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → ' + s.title_id;
@@ -274,6 +285,56 @@ $('#saverestore').onclick = async () => {
   if (!b) return;
   if (!confirm('Backup ' + b + ' nach ' + SAVE_NAMES[t] + ' zurückspielen?\n\nDer jetzige Stand dort wird vorher gesichert.')) return;
   const r = await api('/api/saves/restore?backup=' + encodeURIComponent(b) + '&to=' + t, { method: 'POST' });
+  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+};
+const PROJ_NAMES = { longshot: 'Projekt Longshot', heylisten: 'Projekt HeyListen', fork: 'Projekt Longshot-Fork' };
+let titlesData = null, psReady = false, busy = false;
+function esc(s) { return String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
+async function loadTitles() {
+  try { titlesData = await api('/api/titles'); } catch (e) { return; }
+  const st = titlesData.status, box = $('#titlecards');
+  box.innerHTML = '';
+  if (!st) { box.innerHTML = '<div class="msg">' + (titlesData.ps5 ? 'noch nicht gelesen' : 'PS5_HOST nicht gesetzt') + '</div>'; return; }
+  const count = {};
+  st.titles.forEach(t => { const n = (t.name || '').toLowerCase(); count[n] = (count[n] || 0) + 1; });
+  st.titles.forEach(t => {
+    const d = document.createElement('div'); d.className = 'savecard';
+    const origin = t.tag ? esc(t.repo || '') + ' ' + esc(t.tag) + (t.model ? ', ' + esc(t.model) : '') + ', gebaut ' + esc(t.built || '?')
+      : 'Herkunft unbekannt' + (t.project ? ' (Title-ID von ' + PROJ_NAMES[t.project] + ')' : '') + (t.eboot_time ? ', eboot.bin vom ' + fmtIso(t.eboot_time) : '');
+    d.innerHTML = '<b>' + esc(t.name || '(ohne Namen)') + '</b> <span class="msg">' + esc(t.id) + '</span>' +
+      (count[(t.name || '').toLowerCase()] > 1 ? '<span class="tag warn">Name doppelt</span>' : '') +
+      (t.eboot ? '' : '<span class="tag warn">ohne eboot.bin</span>') +
+      '<small>' + origin + '</small><small>' + Math.round(t.bytes / 1048576) + ' MB, ' +
+      (t.saves ? t.saves + ' Spielstand-Dateien' : 'keine Spielstände') + '</small>' +
+      '<div class="tbtns"><button data-ren="' + esc(t.id) + '">Umbenennen</button><button class="stop" data-del="' + esc(t.id) + '">Löschen</button></div>';
+    box.appendChild(d);
+  });
+  if (!st.titles.length) box.innerHTML = '<div class="msg">keine Zelda-Titles unter /data/homebrew</div>';
+  const m = document.createElement('div'); m.className = 'msg';
+  m.textContent = 'gelesen ' + fmtIso(st.time) + (st.others && st.others.length ? ', andere Titles: ' + st.others.length : '');
+  box.appendChild(m);
+  box.querySelectorAll('button[data-ren]').forEach(b => { b.disabled = busy || !psReady; b.onclick = () => renameTitle(b.dataset.ren); });
+  box.querySelectorAll('button[data-del]').forEach(b => { b.disabled = busy || !psReady; b.onclick = () => deleteTitle(b.dataset.del); });
+}
+function titleOf(id) { return (titlesData && titlesData.status && titlesData.status.titles.find(t => t.id === id)) || {}; }
+async function renameTitle(id) {
+  const t = titleOf(id);
+  const n = prompt('Neuer angezeigter Name für ' + id + ' (jetzt: ' + (t.name || '?') + '), 1 bis 40 Zeichen:', t.name || '');
+  if (n === null || !n.trim()) return;
+  const r = await api('/api/titles/rename?id=' + id + '&name=' + encodeURIComponent(n.trim()), { method: 'POST' });
+  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+}
+async function deleteTitle(id) {
+  const t = titleOf(id);
+  if (!confirm('Title ' + id + ' „' + (t.name || '?') + '“ auf der PS5 LÖSCHEN?\n\n' + (t.tag ? (t.repo || '') + ' ' + t.tag : 'Herkunft unbekannt') +
+    ', ' + Math.round((t.bytes || 0) / 1048576) + ' MB.\n' + (t.saves ? 'Die ' + t.saves + ' Spielstand-Dateien werden vorher nach /config/saves/backups gesichert.' : 'Keine Spielstände darin.') +
+    '\n\nDas Spiel muss auf der PS5 beendet sein.')) return;
+  if (prompt('Zur Sicherheit die Title-ID eintippen:') !== id) { alert('nicht gelöscht'); return; }
+  const r = await api('/api/titles/delete?id=' + id, { method: 'POST' });
+  if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
+}
+$('#titlesread').onclick = async () => {
+  const r = await api('/api/run?stage=titles-list', { method: 'POST' });
   if (!r.ok) alert(r.msg); next = 0; lastLog = null; refresh();
 };
 $('#relload').onclick = () => loadReleases(true);

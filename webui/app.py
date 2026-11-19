@@ -29,10 +29,11 @@ PROJECTS["fork"] = {"label": "Longshot-Fork (cosmicflow2512/PS5_Longshot_Cosi, m
                     "repo": os.environ.get("FORK_REPO", "cosmicflow2512/PS5_Longshot_Cosi"), "appimage": "LongshotPS5Builder",
                     "title_id": "PPSA99198", "state": os.path.join(CONFIG, "fork"), "ref_env": "FORK_REF"}
 PROJECT_FILE = os.path.join(CONFIG, "project")
-STAGES = ("check", "all", "update", "build", "deploy", "saves-status")
+STAGES = ("check", "all", "update", "build", "deploy", "saves-status", "titles-list")
+TITLE_ID_RE = re.compile(r"^[A-Z]{4}[0-9]{5}$")
 SAVE_TITLES = ("longshot", "heylisten", "fork")   # (scripts/saves.py TITLES)
 SAVES_DIR = os.path.join(CONFIG, "saves")
-BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z]+-[a-z-]+$")
+BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]+-[a-z-]+$")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
 # Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt
 LANGUAGES = {"de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
@@ -282,6 +283,9 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.send(502, json.dumps({"error": str(e), "ref": current_ref(), "releases": []}))
         if u.path == "/api/saves":
             return self.send(200, json.dumps(saves_info()))
+        if u.path == "/api/titles":
+            return self.send(200, json.dumps({"status": read_json(os.path.join(CONFIG, "titles", "status.json")),
+                                              "ps5": bool(os.environ.get("PS5_HOST", "").strip())}))
         if u.path == "/api/log":
             q = urllib.parse.parse_qs(u.query)
             try:
@@ -330,6 +334,19 @@ class H(http.server.BaseHTTPRequestHandler):
             if not BACKUP_RE.match(name) or dst not in SAVE_TITLES or not os.path.isdir(os.path.join(SAVES_DIR, "backups", name)):
                 return self.send(400, json.dumps({"ok": False, "msg": "unbekanntes Backup oder Ziel"}))
             ok, msg = start("saves-restore", {"SAVES_BACKUP": name, "SAVES_TO": dst})
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
+        if u.path in ("/api/titles/delete", "/api/titles/rename"):
+            tid = q.get("id", [""])[0]
+            st = read_json(os.path.join(CONFIG, "titles", "status.json")) or {}
+            if not TITLE_ID_RE.match(tid) or tid not in [t.get("id") for t in st.get("titles", [])]:
+                return self.send(400, json.dumps({"ok": False, "msg": "unbekannter Title (erst neu lesen)"}))
+            if u.path.endswith("delete"):
+                ok, msg = start("titles-delete", {"TITLES_ID": tid})
+            else:
+                name = q.get("name", [""])[0].strip()
+                if not name or len(name) > 40 or any(ord(c) < 32 for c in name):
+                    return self.send(400, json.dumps({"ok": False, "msg": "Name: 1 bis 40 Zeichen"}))
+                ok, msg = start("titles-rename", {"TITLES_ID": tid, "TITLES_NAME": name})
             return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
         if u.path == "/api/project":
             p = q.get("project", [""])[0]
