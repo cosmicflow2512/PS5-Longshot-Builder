@@ -5,7 +5,8 @@
 #   build.sh check    neuestes Release gegen den geladenen Builder und das gebaute Title
 #   build.sh update   AppImage des gewaehlten Releases (Standard: neuestes) laden, gegen ihre .sha256 pruefen, entpacken
 #   build.sh build    AppRun --cli (ps5/builder/pipeline.py): .nup lesen, Lift, Kompilieren, Linken, Title nach $OUT_DIR
-#   build.sh deploy   Title per FTP nach /data/homebrew/PPSA99025 auf der PS5 (scripts/deploy.py)
+#   build.sh deploy   Title per FTP nach /data/homebrew/PPSA99025 auf der PS5 (scripts/deploy.py): den aktuellen Build
+#                     oder einen archivierten ($CONFIG_DIR/deploy_build, Auswahl in der Web-UI)
 #   build.sh all      update + build (+ deploy bei AUTO_DEPLOY=true)
 #
 # Die AppImage wird entpackt statt gemountet (in Docker gibt es kein FUSE). Ihr AppRun startet mit "--cli" die
@@ -32,6 +33,15 @@ LANGUAGE=${LANGUAGE-de}
 if [[ -s $CONFIG_DIR/language ]]; then LANGUAGE=$(tr -d ' \r\n' < "$CONFIG_DIR/language"); fi
 LANGUAGES="en-US en-GB fr fr-CA de it es es-419 pt-BR nl pl ru ja ko zh-Hans zh-Hant"
 BUILDERS="$CONFIG_DIR/builder"
+# Jeder fertige Build wird nach $OUT_DIR/archive/<Builder-Version>-<Konsole>/ kopiert (ARCHIVE_BUILDS=false: nicht).
+# Welcher davon auf die PS5 kommt: $CONFIG_DIR/deploy_build ("current" oder ein Archivname, Auswahl in der Web-UI).
+ARCHIVE_DIR="$OUT_DIR/archive"
+ARCHIVE_BUILDS=${ARCHIVE_BUILDS:-true}
+DEPLOY_BUILD=current
+if [[ -s $CONFIG_DIR/deploy_build ]]; then DEPLOY_BUILD=$(tr -d ' \r\n' < "$CONFIG_DIR/deploy_build"); fi
+# Builder anderer Releases beim Update behalten (Standard; je einige 100 MB), damit ein Wechsel zurueck nichts neu laedt.
+KEEP_BUILDERS=${KEEP_BUILDERS:-true}
+if [[ -s $CONFIG_DIR/keep_builders ]]; then KEEP_BUILDERS=$(tr -d ' \r\n' < "$CONFIG_DIR/keep_builders"); fi
 WORK="$CONFIG_DIR/work"
 TITLE="$OUT_DIR/$TITLE_ID"
 CURL=(curl -fsSL --retry 5 --retry-delay 10 --proto '=https')
@@ -55,12 +65,13 @@ fi
 
 # language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c).
 write_language() {
-    [[ -n $LANGUAGE && -d $TITLE ]] || return 0
+    local dir=${1:-$TITLE}
+    [[ -n $LANGUAGE && -d $dir ]] || return 0
     {
         printf '# The game%ss language. Change the line below to one of the codes listed here, save, and start the game again.\n\n%s\n\n' "'" "$LANGUAGE"
         printf '# %s\n' $LANGUAGES
-    } > "$TITLE/language.txt"
-    echo "  Spielsprache: $LANGUAGE ($TITLE/language.txt)"
+    } > "$dir/language.txt"
+    echo "  Spielsprache: $LANGUAGE ($dir/language.txt)"
 }
 
 # Speicherbudget in MB: das kleinere von freiem RAM und Speicherlimit des Containers.
@@ -175,9 +186,10 @@ stage_update() {
     fi
     echo "$ver" > "$BUILDERS/current"
     local d
-    for d in "$BUILDERS"/*/; do   # andere Builder (je einige 100 MB) weg
+    for d in "$BUILDERS"/*/; do   # andere Builder (je einige 100 MB) weg, wenn KEEP_BUILDERS=false
         d=${d%/}
-        if [[ -d $d && $(basename "$d") != "$ver" ]]; then rm -rf "$d"; fi
+        [[ -d $d && $(basename "$d") != "$ver" ]] || continue
+        if [[ $KEEP_BUILDERS == true ]]; then echo "  behalten: Builder $(basename "$d")"; else rm -rf "$d"; fi
     done
     ensure_zbic "$BUILDERS/$ver" "$tag"
     echo "  Builder: $ver  ($(du -sh "$BUILDERS/$ver" | cut -f1))"
@@ -309,13 +321,40 @@ stage_build() {
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
         chown -R "$PUID:$PGID" "$TITLE" 2>/dev/null || echo "  Hinweis: Besitzer von $TITLE nicht auf $PUID:$PGID gesetzt"
     fi
+    archive_build
     log "Fertig: $TITLE  ($(builder_tag), $MODEL, $(du -sh "$TITLE" | cut -f1)). Auf die PS5 nach /data/homebrew/$TITLE_ID"
 }
 
+# Kopie des fertigen Builds nach $ARCHIVE_DIR/<Builder-Version>-<Konsole>/ (ersetzt einen gleichnamigen). Erst in einen
+# versteckten Ordner, dann umbenennen: ein halb kopiertes Archiv taucht nie in der Liste auf. Scheitert die Kopie (Platz),
+# bleibt der Build trotzdem gueltig.
+archive_build() {
+    [[ $ARCHIVE_BUILDS == true ]] || return 0
+    local name dest tmp
+    name="$(builder_tag)-$MODEL"
+    valid_tag "$name" || { echo "  Hinweis: kein gueltiger Archivname ($name), nicht archiviert"; return 0; }
+    dest="$ARCHIVE_DIR/$name"; tmp="$ARCHIVE_DIR/.$name.tmp"
+    mkdir -p "$ARCHIVE_DIR"; rm -rf "$tmp"; mkdir -p "$tmp"
+    if ! cp -a "$TITLE" "$tmp/$TITLE_ID" || ! cp "$CONFIG_DIR/build-info.json" "$tmp/build-info.json"; then
+        rm -rf "$tmp"
+        echo "  Hinweis: Archivieren nach $dest fehlgeschlagen (Platz unter $OUT_DIR?). Der Build selbst ist fertig."
+        return 0
+    fi
+    rm -rf "$dest"; mv "$tmp" "$dest"
+    if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then chown -R "$PUID:$PGID" "$dest" 2>/dev/null || true; fi
+    echo "  archiviert: $dest ($(du -sh "$dest" | cut -f1))"
+}
+
 stage_deploy() {
-    [[ -f $TITLE/eboot.bin ]] || die "kein Title unter $TITLE (erst build)"
-    write_language
-    local args=(--dist "$TITLE")
+    local src=$TITLE what="aktueller Build"
+    if [[ -n $DEPLOY_BUILD && $DEPLOY_BUILD != current ]]; then
+        valid_tag "$DEPLOY_BUILD" && [[ $DEPLOY_BUILD != .* ]] || die "deploy_build=$DEPLOY_BUILD ist kein gueltiger Archivname"
+        src="$ARCHIVE_DIR/$DEPLOY_BUILD/$TITLE_ID"; what="archivierter Build $DEPLOY_BUILD"
+    fi
+    [[ -f $src/eboot.bin ]] || die "kein Title unter $src (erst build, oder in der Web-UI einen anderen Build waehlen)"
+    log "Auf die PS5: $what ($src)"
+    write_language "$src"
+    local args=(--dist "$src")
     if [[ ${UPLOAD_NUP:-false} == true ]]; then
         local nup; nup=$(find_nup)
         [[ -n $nup ]] || die "UPLOAD_NUP=true, aber keine .nup unter $NUP_DIR"
@@ -349,7 +388,7 @@ free_gb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print int($4/1024/1024)}'; }
 stage=${1:-all}
 mkdir -p "$CONFIG_DIR" "$HOME"
 IMAGE_REV=${IMAGE_REV:-unbekannt}
-echo "Image: ${IMAGE_REV:0:7}  Ref: $REF  Konsole: $MODEL  Sprache: ${LANGUAGE:-Spielstandard}  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
+echo "Image: ${IMAGE_REV:0:7}  Ref: $REF  Konsole: $MODEL  Deploy: $DEPLOY_BUILD  Builder behalten: $KEEP_BUILDERS  Sprache: ${LANGUAGE:-Spielstandard}  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
 echo "Frei: $(free_gb "$CONFIG_DIR") GB unter $CONFIG_DIR, $(free_gb "$OUT_DIR") GB unter $OUT_DIR (Upstream: rund 6 GB fuer den Build, 1 GB fuer den Builder)"
 if [[ $stage == build || $stage == all ]] && (( $(budget_mb) < 8192 )); then
     echo "Hinweis: weniger als 8 GB Speicher frei bzw. erlaubt. Upstream nennt rund 10 GB, der Lift allein haelt etwa 6 GB."

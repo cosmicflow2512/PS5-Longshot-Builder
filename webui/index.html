@@ -32,6 +32,11 @@
   .relbar { display:grid; grid-template-columns: 1fr auto; gap:6px; }
   .relbar button { width:auto; }
   .msg { color:var(--dim); font-size:12px; margin-top:6px; }
+  .check { display:flex; gap:8px; align-items:center; margin-top:10px; font-size:13px; }
+  .check input { width:auto; margin:0; }
+  ul.blist { list-style:none; margin:6px 0 0; padding:0; font-size:12px; color:var(--dim); }
+  ul.blist li { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:2px 0; }
+  ul.blist button { width:auto; padding:2px 8px; font-size:12px; }
 </style>
 </head>
 <body>
@@ -45,7 +50,7 @@
         <button class="primary" data-stage="all">Alles bauen<small>Builder aktualisieren und Build</small></button>
         <button data-stage="update">Builder aktualisieren<small>AppImage laden, prüfen, entpacken, --check</small></button>
         <button data-stage="build">Build<small>.nup lesen, Lift, Kompilieren, Linken, Title</small></button>
-        <button data-stage="deploy">Auf die PS5 kopieren<small>FTP nach /data/homebrew/PPSA99025</small></button>
+        <button data-stage="deploy">Auf die PS5 kopieren<small id="deploysub">FTP nach /data/homebrew/PPSA99025</small></button>
         <button class="stop" id="stop">Abbrechen</button>
       </div>
     </section>
@@ -63,6 +68,13 @@
       <h2>Release</h2>
       <div class="relbar"><select id="rel"></select><button id="relload" title="Liste neu laden">&#8635;</button></div>
       <div id="relmsg" class="msg">&hellip;</div>
+    </section>
+    <section>
+      <h2>Builds</h2>
+      <div class="relbar"><select id="builds"></select><button id="delbuild" title="Gewählten archivierten Build löschen">Löschen</button></div>
+      <div id="buildsmsg" class="msg">&hellip;</div>
+      <label class="check"><input type="checkbox" id="keep"> Builder anderer Releases behalten</label>
+      <ul id="builders" class="blist"></ul>
     </section>
     <section>
       <h2>Stand</h2>
@@ -84,7 +96,7 @@
 </main>
 <script>
 const $ = s => document.querySelector(s);
-let next = 0, lastLog = null, modelsShown = false;
+let next = 0, lastLog = null, modelsShown = false, wasRunning = null;
 async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
 function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
 async function refresh() {
@@ -96,6 +108,11 @@ async function refresh() {
     else if (s.code !== null) { st.textContent = s.stage + ': Fehler (Exit ' + s.code + ')'; st.className = 'bad'; }
     else { st.textContent = 'bereit'; st.className = ''; }
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
+    $('#builds').disabled = s.running; $('#delbuild').disabled = s.running || $('#builds').value === 'current';
+    $('#keep').disabled = s.running;
+    document.querySelectorAll('#builders button').forEach(b => b.disabled = s.running);
+    if (wasRunning === true && !s.running) loadBuilds();
+    wasRunning = s.running;
     $('#rel').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → PPSA99025';
@@ -168,9 +185,61 @@ $('#lang').onchange = async () => {
   if (!r.ok) alert(r.msg);
   refresh();
 };
+function gb(n) { return (n / (1 << 30)).toFixed(2) + ' GB'; }
+async function loadBuilds() {
+  const sel = $('#builds'), msg = $('#buildsmsg');
+  try {
+    const b = await api('/api/builds');
+    sel.innerHTML = '';
+    const add = (v, t) => { const o = document.createElement('option'); o.value = v; o.textContent = t; sel.appendChild(o); };
+    add('current', b.current ? 'Aktueller Build: ' + (b.current.tag || '?') + ', ' + (b.current.model || '?') + ', ' + b.current.time
+                             : 'Aktueller Build: keiner');
+    b.archive.forEach(a => add(a.name, a.name + ' (' + (a.time || '?') + ', ' + gb(a.size) + ')'));
+    sel.value = b.deploy;
+    const total = b.archive.reduce((n, a) => n + a.size, 0);
+    msg.textContent = b.archive.length + ' archiviert (' + gb(total) + ' unter /output/archive). Die Auswahl kommt mit „Auf die PS5 kopieren“ auf die Konsole.';
+    $('#deploysub').textContent = 'FTP nach /data/homebrew/PPSA99025: ' + (b.deploy === 'current' ? 'aktueller Build' : b.deploy);
+    $('#delbuild').disabled = b.deploy === 'current';
+    $('#keep').checked = b.keep_builders;
+    const ul = $('#builders'); ul.innerHTML = '';
+    b.builders.forEach(x => {
+      const li = document.createElement('li');
+      const sp = document.createElement('span'); sp.textContent = 'Builder ' + x.name + ' (' + gb(x.size) + ')' + (x.active ? ', aktiv' : '');
+      li.appendChild(sp);
+      if (!x.active) {
+        const bt = document.createElement('button'); bt.textContent = 'Löschen';
+        bt.onclick = async () => {
+          if (!confirm('Builder ' + x.name + ' löschen?')) return;
+          const r = await api('/api/delete-builder?name=' + encodeURIComponent(x.name), { method: 'POST' });
+          if (!r.ok) alert(r.msg);
+          loadBuilds();
+        };
+        li.appendChild(bt);
+      }
+      ul.appendChild(li);
+    });
+  } catch (e) { msg.textContent = 'Build-Liste nicht ladbar'; }
+}
+$('#builds').onchange = async () => {
+  const r = await api('/api/deploy-build?name=' + encodeURIComponent($('#builds').value), { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  loadBuilds();
+};
+$('#delbuild').onclick = async () => {
+  const n = $('#builds').value;
+  if (n === 'current' || !confirm('Archivierten Build ' + n + ' löschen?')) return;
+  const r = await api('/api/delete-build?name=' + encodeURIComponent(n), { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  loadBuilds();
+};
+$('#keep').onchange = async () => {
+  const r = await api('/api/keep-builders?on=' + $('#keep').checked, { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  loadBuilds();
+};
 $('#relload').onclick = () => loadReleases(true);
 $('#stop').onclick = () => api('/api/stop', { method: 'POST' }).then(refresh);
-loadReleases(false); refresh(); setInterval(refresh, 2000);
+loadReleases(false); loadBuilds(); refresh(); setInterval(refresh, 2000);
 </script>
 </body>
 </html>
