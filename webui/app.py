@@ -5,6 +5,7 @@ import http.server
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import threading
@@ -45,6 +46,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 MODEL_FILE = os.path.join(CONFIG, "model")
 LANGUAGE_FILE = os.path.join(CONFIG, "language")
 TAG_RE = re.compile(r"^[A-Za-z0-9._+-]{1,80}$")
+# Archiv- und Builder-Ordner: wie ein Tag, aber nicht mit einem Punkt am Anfang (".", "..", versteckte Temp-Ordner)
+NAME_RE = re.compile(r"^[A-Za-z0-9_+-][A-Za-z0-9._+-]{0,79}$")
+KEEP_FILE = os.path.join(CONFIG, "keep_builders")
 RELEASE_RE = re.compile(r"^v(\d+)\.(\d+)\.(\d+)(?:-([A-Za-z]+)\.?(\d+)?)?$")
 releases_cache = {}
 
@@ -136,6 +140,96 @@ def current_language():
     return l if l in LANGUAGES else ""
 
 
+def keep_builders():
+    return (read_line(KEEP_FILE) or os.environ.get("KEEP_BUILDERS", "true")) == "true"
+
+
+def archive_dir():
+    """Archivierte Builds des gewaehlten Projekts (scripts/build.sh ARCHIVE_DIR)"""
+    return os.path.join(OUT, "archive", current_project())
+
+
+def builders_dir():
+    return os.path.join(project()["state"], "builder")
+
+
+def deploy_file():
+    return os.path.join(project()["state"], "deploy_build")
+
+
+def dir_size(path):
+    total = 0
+    for base, _, names in os.walk(path):
+        for n in names:
+            try:
+                total += os.lstat(os.path.join(base, n)).st_size
+            except OSError:
+                pass
+    return total
+
+
+def is_archived(name):
+    return bool(NAME_RE.match(name)) and os.path.isfile(os.path.join(archive_dir(), name, project()["title_id"], "eboot.bin"))
+
+
+def archived():
+    """Archivierte Builds unter /output/archive/<Projekt>/<Version>-<Konsole>/, neueste zuerst"""
+    out, base = [], archive_dir()
+    try:
+        names = os.listdir(base)
+    except OSError:
+        return out
+    for n in names:
+        if not is_archived(n):
+            continue
+        d = os.path.join(base, n)
+        info = read_json(os.path.join(d, "build-info.json")) or {}
+        out.append({"name": n, "tag": info.get("tag", ""), "model": info.get("model", ""), "time": info.get("time", ""),
+                    "size": dir_size(d), "mtime": os.path.getmtime(d)})
+    return sorted(out, key=lambda x: x["mtime"], reverse=True)
+
+
+def current_deploy():
+    """Was "Auf die PS5 kopieren" nimmt: "current" (/output/<Title-ID>) oder ein Archivname, der noch existiert"""
+    v = read_line(deploy_file()) or "current"
+    return v if v == "current" or is_archived(v) else "current"
+
+
+def builds():
+    pr = project()
+    cur = None
+    if os.path.isfile(os.path.join(OUT, pr["title_id"], "eboot.bin")):
+        info = read_json(os.path.join(pr["state"], "build-info.json")) or {}
+        cur = {"tag": info.get("tag", ""), "model": info.get("model", ""), "time": info.get("time", "")}
+    active = read_line(os.path.join(builders_dir(), "current"))
+    bl = []
+    try:
+        for n in sorted(os.listdir(builders_dir())):
+            if NAME_RE.match(n) and os.path.isdir(os.path.join(builders_dir(), n)):
+                bl.append({"name": n, "size": dir_size(os.path.join(builders_dir(), n)), "active": n == active})
+    except OSError:
+        pass
+    return {"project": current_project(), "title_id": pr["title_id"], "archive_dir": archive_dir(), "current": cur,
+            "archive": archived(), "deploy": current_deploy(), "keep_builders": keep_builders(), "builders": bl}
+
+
+def remove_dir(parent, name):
+    """Ordner <parent>/<name> loeschen: nicht waehrend eines Laufs, nur direkt unter parent"""
+    if not NAME_RE.match(name):
+        return False, "kein gueltiger Name"
+    path = os.path.join(parent, name)
+    if os.path.dirname(os.path.realpath(path)) != os.path.realpath(parent) or not os.path.isdir(path):
+        return False, "nicht vorhanden"
+    with lock:
+        if running():
+            return False, "waehrend eines Laufs nicht moeglich"
+        try:
+            shutil.rmtree(path)
+        except OSError as e:
+            return False, "Loeschen fehlgeschlagen: %s" % e
+    return True, "geloescht: " + path
+
+
 def release_order(tag):
     """Neueste zuerst: nach Version, ein fertiges Release vor seinen Vorabversionen"""
     m = RELEASE_RE.match(tag)
@@ -224,6 +318,7 @@ def status():
     title = os.path.join(OUT, pr["title_id"])
     s["title"] = title
     s["build"] = read_json(os.path.join(pr["state"], "build-info.json")) if os.path.exists(os.path.join(title, "eboot.bin")) else None
+    s["deploy"] = current_deploy()
     s["updates"] = read_json(os.path.join(pr["state"], "update-check.json"))
     host = os.environ.get("PS5_HOST", "")
     s["ps5"] = "%s:%s" % (host, os.environ.get("PS5_FTP_PORT", "2121")) if host else ""
@@ -286,6 +381,8 @@ class H(http.server.BaseHTTPRequestHandler):
                 return self.send(200, json.dumps(dict(releases(force), ref=current_ref())))
             except Exception as e:
                 return self.send(502, json.dumps({"error": str(e), "ref": current_ref(), "releases": []}))
+        if u.path == "/api/builds":
+            return self.send(200, json.dumps(builds()))
         if u.path == "/api/saves":
             return self.send(200, json.dumps(saves_info()))
         if u.path == "/api/titles":
@@ -386,6 +483,29 @@ class H(http.server.BaseHTTPRequestHandler):
             if not save_choice(LANGUAGE_FILE, lang):
                 return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
             return self.send(200, json.dumps({"ok": True, "language": lang}))
+        if u.path == "/api/deploy-build":
+            name = q.get("name", [""])[0]
+            if name != "current" and not is_archived(name):
+                return self.send(400, json.dumps({"ok": False, "msg": "kein solcher Build"}))
+            if not save_choice(deploy_file(), name):
+                return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
+            return self.send(200, json.dumps({"ok": True, "deploy": name}))
+        if u.path == "/api/delete-build":
+            ok, msg = remove_dir(archive_dir(), q.get("name", [""])[0])
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
+        if u.path == "/api/delete-builder":
+            name = q.get("name", [""])[0]
+            if name == read_line(os.path.join(builders_dir(), "current")):
+                return self.send(409, json.dumps({"ok": False, "msg": "der aktive Builder bleibt"}))
+            ok, msg = remove_dir(builders_dir(), name)
+            return self.send(200 if ok else 409, json.dumps({"ok": ok, "msg": msg}))
+        if u.path == "/api/keep-builders":
+            on = q.get("on", [""])[0]
+            if on not in ("true", "false"):
+                return self.send(400, json.dumps({"ok": False, "msg": "true oder false"}))
+            if not save_choice(KEEP_FILE, on):
+                return self.send(409, json.dumps({"ok": False, "msg": "waehrend eines Laufs nicht aenderbar"}))
+            return self.send(200, json.dumps({"ok": True, "keep_builders": on == "true"}))
         if u.path == "/api/stop":
             return self.send(200, json.dumps({"ok": stop()}))
         self.send(404, '{"error":"not found"}')

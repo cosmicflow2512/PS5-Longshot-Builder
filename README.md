@@ -155,6 +155,25 @@ In der Web-UI unter **Konsole** (gespeichert in `/config/model`, geht vor `MODEL
 
 Ein Build für das andere Modell dauert nur Sekunden: die Build-Dateien unter `/config/work` bleiben.
 
+## Mehrere Versionen
+
+Jeder fertige Build wird zusätzlich nach `/output/archive/<Projekt>/<Builder-Version>-<Konsole>/` kopiert (z. B.
+`archive/longshot/v0.1.0-pro/PPSA99025`, daneben `build-info.json`). Ein neuer Build derselben Version und Konsole
+ersetzt seinen Archiveintrag. `ARCHIVE_BUILDS=false` schaltet das ab.
+
+In der Web-UI im Reiter **Build** unter **Builds** wählst du, was „Auf die PS5 kopieren" nimmt: den aktuellen Build
+(`/output/<Title-ID>`) oder einen archivierten (je Projekt gespeichert in `deploy_build`). Ein Wechsel zwischen Versionen
+braucht damit kein neues Kompilieren. Sprache, Name, Lossless.dll und FSR 4 kommen beim Deploy wie beim aktuellen Build
+in den gewählten Ordner. Archivierte Builds und nicht aktive Builder lassen sich dort auch löschen.
+
+Auf der PS5 liegt je Projekt trotzdem nur eine Version: alle Builds eines Projekts haben dieselbe Title-ID und landen im
+selben Ordner unter `/data/homebrew`. Das Deploy löscht auf der Konsole nichts. Eine Datei, die nur die vorher kopierte
+Version hat, bleibt also liegen.
+
+Der Schalter **Builder anderer Releases behalten** (gespeichert in `/config/keep_builders`, geht vor `KEEP_BUILDERS`,
+Standard an) lässt beim Update die entpackten Builder anderer Releases liegen (je einige 100 MB). Ein Wechsel zurück auf
+ein früheres Release lädt dann nichts neu.
+
 ## Spielsprache
 
 In der Web-UI unter **Spielsprache** (gespeichert in `/config/language`, geht vor `LANGUAGE`, Standard `de`). `build.sh`
@@ -200,6 +219,8 @@ nächsten Lauf fort.
 | `LONGSHOT_REPO` | `heydemoura/PS5_Longshot` | GitHub-Repository der Releases |
 | `PS5_HOST` | leer | IP der PS5 |
 | `PS5_FTP_PORT` | `2121` | FTP-Port |
+| `ARCHIVE_BUILDS` | `true` | jeden Build nach `/output/archive/<Projekt>/<Version>-<Konsole>/` kopieren |
+| `KEEP_BUILDERS` | `true` | Builder anderer Releases beim Update behalten, solange in der Web-UI nichts gewählt ist |
 | `AUTO_DEPLOY` | `false` | nach „Alles bauen" automatisch deployen |
 | `UPLOAD_NUP` | `false` | `.nup` beim Deploy mitkopieren |
 | `PS5_NUP_PATH` | `/data/eglantineps5/roms/oot.nup` | Ziel für `UPLOAD_NUP` |

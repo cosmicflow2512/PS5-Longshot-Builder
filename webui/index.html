@@ -55,6 +55,11 @@
   .hist { font-size:12px; color:var(--dim); margin-top:8px; }
   .tbtns { display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:6px; }
   .tbtns button { text-align:center; padding:5px; font-size:12px; }
+  .check { display:flex; gap:8px; align-items:center; margin-top:10px; font-size:13px; }
+  .check input { width:auto; margin:0; }
+  ul.blist { list-style:none; margin:6px 0 0; padding:0; font-size:12px; color:var(--dim); }
+  ul.blist li { display:flex; justify-content:space-between; align-items:center; gap:6px; padding:2px 0; }
+  ul.blist button { width:auto; padding:2px 8px; font-size:12px; }
   hr { border:0; border-top:1px solid var(--line); margin:14px 0; }
 </style>
 </head>
@@ -89,6 +94,13 @@
         <h2>Release</h2>
         <div class="relbar"><select id="rel"></select><button id="relload" title="Liste neu laden">&#8635;</button></div>
         <div id="relmsg" class="msg">&hellip;</div>
+      </section>
+      <section>
+        <h2>Builds</h2>
+        <div class="relbar"><select id="builds" title="Was „Auf die PS5 kopieren“ nimmt"></select><button id="delbuild" title="Gewählten archivierten Build löschen">Löschen</button></div>
+        <div id="buildsmsg" class="msg">&hellip;</div>
+        <label class="check"><input type="checkbox" id="keep"> Builder anderer Releases behalten</label>
+        <ul id="builders" class="blist"></ul>
       </section>
       <section>
         <div class="two">
@@ -216,10 +228,14 @@ async function refresh() {
     $('#rel').disabled = s.running; $('#project').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → ' + s.title_id;
-    $('#deploybtn').title = 'FTP nach /data/homebrew/' + s.title_id;
+    $('#deploybtn').title = 'FTP nach /data/homebrew/' + s.title_id + ': ' + (s.deploy === 'current' ? 'aktueller Build' : 'archivierter Build ' + s.deploy);
+    $('#deploybtn').textContent = s.deploy === 'current' ? 'Auf die PS5 kopieren' : 'Auf die PS5 kopieren (' + s.deploy + ')';
+    $('#builds').disabled = s.running; $('#keep').disabled = s.running;
+    $('#delbuild').disabled = s.running || $('#builds').value === 'current';
+    document.querySelectorAll('#builders button').forEach(b => b.disabled = s.running);
     if (!$('#project').options.length) fillSelect($('#project'), Object.entries(s.projects));
     if (document.activeElement !== $('#project')) $('#project').value = s.project;
-    if (shownProject !== null && shownProject !== s.project) loadReleases(false);
+    if (shownProject !== null && shownProject !== s.project) { loadReleases(false); loadBuilds(); }
     shownProject = s.project;
     if (!$('#model').options.length) fillSelect($('#model'), Object.entries(s.models).map(([v, t]) => [v, t + ' (' + v + ')']));
     if (!$('#lang').options.length) fillSelect($('#lang'), Object.entries(s.languages).map(([v, t]) => [v, t + ' (' + v + ')']));
@@ -241,7 +257,7 @@ async function refresh() {
     if (lastEnded !== s.ended) {
       const first = lastEnded === undefined;
       lastEnded = s.ended;
-      loadSaves(); loadTitles();
+      loadSaves(); loadTitles(); loadBuilds();
       if (!first && !s.running && ['check', 'update', 'all'].includes(s.stage)) loadReleases(true);
     }
     if (busy !== s.running || psReady !== !!s.ps5) { busy = s.running; psReady = !!s.ps5; loadTitles(); }
@@ -283,6 +299,49 @@ $('#project').onchange = () => choose('/api/project?project=' + encodeURICompone
 $('#model').onchange = () => choose('/api/model?model=' + encodeURIComponent($('#model').value));
 $('#lang').onchange = () => choose('/api/language?language=' + encodeURIComponent($('#lang').value));
 $('#relload').onclick = () => loadReleases(true);
+// ---- Builds: archivierte Builds des Projekts, Auswahl fürs Deploy, Löschen; Builder behalten ----
+function gb(n) { return (n / (1 << 30)).toFixed(2) + ' GB'; }
+async function loadBuilds() {
+  const sel = $('#builds'), msg = $('#buildsmsg');
+  try {
+    const b = await api('/api/builds');
+    const opts = [['current', 'Aktueller Build: ' + (b.current ? (b.current.tag || '?') + ', ' + (b.current.model || '?') + ', ' + b.current.time : 'keiner')]]
+      .concat(b.archive.map(a => [a.name, a.name + ' (' + (a.time || '?') + ', ' + gb(a.size) + ')']));
+    fillSelect(sel, opts);
+    sel.value = b.deploy;
+    const total = b.archive.reduce((n, a) => n + a.size, 0);
+    msg.textContent = b.archive.length + ' archiviert (' + gb(total) + ' unter ' + b.archive_dir + '). Die Auswahl kommt mit „Auf die PS5 kopieren“ nach /data/homebrew/' + b.title_id + '.';
+    $('#delbuild').disabled = busy || b.deploy === 'current';
+    $('#keep').checked = b.keep_builders;
+    const ul = $('#builders'); ul.innerHTML = '';
+    b.builders.forEach(x => {
+      const li = document.createElement('li');
+      const sp = document.createElement('span');
+      sp.textContent = 'Builder ' + x.name + ' (' + gb(x.size) + ')' + (x.active ? ', aktiv' : '');
+      li.appendChild(sp);
+      if (!x.active) {
+        const bt = document.createElement('button'); bt.textContent = 'Löschen'; bt.disabled = busy;
+        bt.onclick = async () => {
+          if (!confirm('Builder ' + x.name + ' löschen?')) return;
+          const r = await api('/api/delete-builder?name=' + encodeURIComponent(x.name), { method: 'POST' });
+          if (!r.ok) alert(r.msg);
+          loadBuilds();
+        };
+        li.appendChild(bt);
+      }
+      ul.appendChild(li);
+    });
+  } catch (e) { msg.textContent = 'Build-Liste nicht ladbar'; }
+}
+$('#builds').onchange = async () => { await choose('/api/deploy-build?name=' + encodeURIComponent($('#builds').value)); loadBuilds(); };
+$('#delbuild').onclick = async () => {
+  const n = $('#builds').value;
+  if (n === 'current' || !confirm('Archivierten Build ' + n + ' löschen?')) return;
+  const r = await api('/api/delete-build?name=' + encodeURIComponent(n), { method: 'POST' });
+  if (!r.ok) alert(r.msg);
+  loadBuilds(); refresh();
+};
+$('#keep').onchange = async () => { await choose('/api/keep-builders?on=' + $('#keep').checked); loadBuilds(); };
 
 // ---- Spielstände und Einstellungen ----
 async function loadSaves() {
