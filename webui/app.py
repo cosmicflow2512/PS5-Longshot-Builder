@@ -16,12 +16,13 @@ CONFIG = os.environ.get("CONFIG_DIR", "/config")
 LOGS = os.path.join(CONFIG, "logs")
 PORT = int(os.environ.get("WEBUI_PORT", "8486"))
 OUT = os.environ.get("OUT_DIR", "/output")
-TITLE_ID = os.environ.get("TITLE_ID", "PPSA99025")
+TITLE_ID = os.environ.get("TITLE_ID", "")   # leer: die des geladenen Builders (kit.json), sonst die des letzten Builds
 REPO = os.environ.get("LONGSHOT_REPO", "heydemoura/PS5_Longshot")
 STAGES = ("check", "all", "update", "build", "deploy")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
-# Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt
-LANGUAGES = {"de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
+# Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt. "auto": keine
+# language.txt, das Title folgt der Sprache der Konsole (ab v0.1.4) bzw. behaelt, was im Spielmenue gewaehlt ist
+LANGUAGES = {"auto": "Sprache der Konsole folgen", "de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
              "it": "Italiano", "es": "Español", "es-419": "Español (Latinoamérica)", "pt-BR": "Português (Brasil)",
              "nl": "Nederlands", "pl": "Polski", "ru": "Русский", "ja": "日本語", "ko": "한국어", "zh-Hans": "简体中文",
              "zh-Hant": "繁體中文"}
@@ -103,8 +104,22 @@ def current_model():
 
 
 def current_language():
-    l = read_line(LANGUAGE_FILE) or os.environ.get("LANGUAGE", "de")
-    return l if l in LANGUAGES else ""
+    l = read_line(LANGUAGE_FILE) or os.environ.get("LANGUAGE", "") or "auto"
+    return l if l in LANGUAGES else "auto"
+
+
+def title_id():
+    """Wie build.sh set_title: TITLE_ID, die Title-ID des Kits im geladenen Builder, die des letzten Builds"""
+    if TITLE_ID:
+        return TITLE_ID
+    tag = read_line(os.path.join(CONFIG, "builder", "current"))
+    if tag and TAG_RE.match(tag):
+        for kit in glob.glob(os.path.join(CONFIG, "builder", tag, "**", "kit.json"), recursive=True)[:1]:
+            tid = (read_json(kit) or {}).get("title_id")
+            if tid:
+                return tid
+    info = read_json(os.path.join(CONFIG, "build-info.json")) or {}
+    return info.get("title_id") or ("PPSA99025" if info.get("tag") else "LGSH00001")
 
 
 def release_order(tag):
@@ -186,9 +201,12 @@ def status():
     s["language"] = current_language()
     s["languages"] = LANGUAGES
     s["builder"] = read_line(os.path.join(CONFIG, "builder", "current"))
-    title = os.path.join(OUT, TITLE_ID)
+    info = read_json(os.path.join(CONFIG, "build-info.json")) or {}
+    built_id = info.get("title_id") or ("PPSA99025" if info.get("tag") else None)
+    s["title_id"] = title_id()
+    title = os.path.join(OUT, built_id or s["title_id"])
     s["title"] = title
-    s["build"] = read_json(os.path.join(CONFIG, "build-info.json")) if os.path.exists(os.path.join(title, "eboot.bin")) else None
+    s["build"] = info if info and os.path.exists(os.path.join(title, "eboot.bin")) else None
     s["updates"] = read_json(os.path.join(CONFIG, "update-check.json"))
     host = os.environ.get("PS5_HOST", "")
     s["ps5"] = "%s:%s" % (host, os.environ.get("PS5_FTP_PORT", "2121")) if host else ""

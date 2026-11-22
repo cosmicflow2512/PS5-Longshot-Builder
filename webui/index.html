@@ -35,7 +35,7 @@
 </style>
 </head>
 <body>
-<header><h1>PS5 Longshot Builder</h1><span id="sub">&hellip; &rarr; PPSA99025</span><span id="state">&hellip;</span></header>
+<header><h1>PS5 Longshot Builder</h1><span id="sub">&hellip;</span><span id="state">&hellip;</span></header>
 <main>
   <div class="side">
     <section>
@@ -45,7 +45,7 @@
         <button class="primary" data-stage="all">Alles bauen<small>Builder aktualisieren und Build</small></button>
         <button data-stage="update">Builder aktualisieren<small>AppImage laden, prüfen, entpacken, --check</small></button>
         <button data-stage="build">Build<small>.nup lesen, Lift, Kompilieren, Linken, Title</small></button>
-        <button data-stage="deploy">Auf die PS5 kopieren<small>FTP nach /data/homebrew/PPSA99025</small></button>
+        <button data-stage="deploy">Auf die PS5 kopieren<small id="deployto">FTP nach /data/homebrew/&hellip;</small></button>
         <button class="stop" id="stop">Abbrechen</button>
       </div>
     </section>
@@ -57,7 +57,7 @@
     <section>
       <h2>Spielsprache</h2>
       <select id="lang"></select>
-      <div class="msg">Steht in language.txt im Title. Gilt ab dem nächsten Build oder Deploy, ohne neu zu kompilieren.</div>
+      <div class="msg">„Konsole folgen“: keine language.txt, das Spiel nimmt ab v0.1.4 die Sprache der PS5 (Englisch, wenn es sie nicht hat), und eine im Spielmenü gewählte Sprache bleibt. Eine feste Sprache steht in language.txt im Title; gilt ab dem nächsten Build oder Deploy, ohne neu zu kompilieren.</div>
     </section>
     <section>
       <h2>Release</h2>
@@ -98,13 +98,15 @@ async function refresh() {
     document.querySelectorAll('button[data-stage]').forEach(b => b.disabled = s.running);
     $('#rel').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
-    $('#sub').textContent = s.repo + ' → PPSA99025';
+    const tid = s.title.split('/').pop();
+    $('#sub').textContent = s.repo + ' → ' + tid;
+    $('#deployto').textContent = 'FTP nach /data/homebrew/' + tid;
     if (!modelsShown) {
       modelsShown = true;
       Object.entries(s.models).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#model').appendChild(o); });
     }
     if (!$('#lang').options.length) {
-      Object.entries(s.languages).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = t + ' (' + v + ')'; $('#lang').appendChild(o); });
+      Object.entries(s.languages).forEach(([v, t]) => { const o = document.createElement('option'); o.value = v; o.textContent = v === 'auto' ? t : t + ' (' + v + ')'; $('#lang').appendChild(o); });
     }
     if (document.activeElement !== $('#model')) $('#model').value = s.model;
     if (document.activeElement !== $('#lang')) $('#lang').value = s.language;

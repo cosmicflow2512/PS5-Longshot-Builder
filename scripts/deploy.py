@@ -1,8 +1,8 @@
-"""Das Title (PPSA99025) per FTP auf die PS5 (Standardport 2121) und optional die .nup dazu.
+"""Das Title (ab v0.1.5 LGSH00001, bis v0.1.4 PPSA99025) per FTP auf die PS5 (Standardport 2121) und optional die .nup dazu.
 
-    deploy.py --dist <output/PPSA99025> [--upload-nup <spiel.nup>]
+    deploy.py --dist <output/LGSH00001> [--upload-nup <spiel.nup>]
 
-Umgebung: PS5_HOST, PS5_FTP_PORT (2121), PS5_TITLE_DIR (/data/homebrew/PPSA99025),
+Umgebung: PS5_HOST, PS5_FTP_PORT (2121), PS5_TITLE_DIR (/data/homebrew/<Name von --dist>),
 PS5_NUP_PATH (/data/eglantineps5/roms/oot.nup): Ziel fuer UPLOAD_NUP.
 
 Longshot liest die Spieldaten auf der Konsole direkt aus der .nup und sucht sie an festen Orten (host/ps5/win32_ps5.c von
@@ -99,7 +99,8 @@ def main():
     if not host or host == "0.0.0.0":
         sys.exit("PS5_HOST ist nicht gesetzt (IP der PS5)")
     port = int(os.environ.get("PS5_FTP_PORT", "2121"))
-    title_dir = os.environ.get("PS5_TITLE_DIR", "/data/homebrew/PPSA99025").rstrip("/")
+    title_dir = (os.environ.get("PS5_TITLE_DIR") or
+                 "/data/homebrew/" + os.path.basename(os.path.normpath(a.dist))).rstrip("/")
     nup_path = os.environ.get("PS5_NUP_PATH", DEFAULT_NUP).strip() or DEFAULT_NUP
     manifest_path = os.path.join(os.environ.get("CONFIG_DIR", "/config"), "deploy-manifest.json")
 
@@ -167,6 +168,10 @@ def main():
               "  Eine vorhandene .nup verschieben:\n"
               "    curl -Q 'MKD /data/eglantineps5' -Q 'MKD /data/eglantineps5/roms' -Q 'RNFR <alter Pfad>' -Q 'RNTO %s' ftp://%s:%d/"
               % ("\n    ".join(KNOWN_NUPS), DEFAULT_NUP, DEFAULT_NUP, host, port), flush=True)
+    if not title_dir.endswith("/PPSA99025") and remote_size(f, "/data/homebrew/PPSA99025/eboot.bin"):
+        print("  Hinweis: /data/homebrew/PPSA99025 (Longshot bis v0.1.4) liegt noch auf der PS5. Das neue Title uebernimmt\n"
+              "  beim ersten Start Spielstaende, Einstellungen und Shader-Cache daraus (host/ps5/migrate_id.c von\n"
+              "  PS5_Longshot) und legt dort moved_to_LGSH00001.txt ab. Danach kann der alte Ordner weg.", flush=True)
     f.quit()
     print("  Deploy fertig: %s. Longshot vom Startbildschirm oder dem Homebrew-Launcher starten." % title_dir, flush=True)
 
