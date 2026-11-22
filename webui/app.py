@@ -28,12 +28,20 @@ PROJECTS = {
 }
 PROJECTS["fork"] = {"label": "Longshot-Fork (cosmicflow2512/PS5_Longshot_Cosi, mit den offenen PRs)",
                     "repo": os.environ.get("FORK_REPO", "cosmicflow2512/PS5_Longshot_Cosi"), "appimage": "LongshotPS5Builder",
-                    "title_id": "PPSA99198", "state": os.path.join(CONFIG, "fork"), "ref_env": "FORK_REF"}
+                    "title_id": "LGSF00002", "state": os.path.join(CONFIG, "fork"), "ref_env": "FORK_REF",
+                    "id_env": "FORK_TITLE_ID"}
+PROJECTS["plus"] = {"label": "Longshot Plus (groovy2312/PS5_Longshot_Plus)",
+                    "repo": os.environ.get("PLUS_REPO", "groovy2312/PS5_Longshot_Plus"), "appimage": "PS5LongshotPlusBuilder",
+                    "title_id": "LGSP00003", "state": os.path.join(CONFIG, "plus"), "ref_env": "PLUS_REF",
+                    "id_env": "PLUS_TITLE_ID"}
+PROJECTS["longshot"]["id_env"] = "LONGSHOT_TITLE_ID"
+PROJECTS["heylisten"]["id_env"] = "HEYLISTEN_TITLE_ID"
 PROJECT_FILE = os.path.join(CONFIG, "project")
 STAGES = ("check", "all", "update", "build", "deploy", "saves-status", "titles-list", "settings-backup")
-OPTIONS_FILE = {"longshot": "longshot_options.ini", "heylisten": "hookshot_options.ini", "fork": "longshot_options.ini"}   # (saves.py OPTIONS)
+OPTIONS_FILE = {"longshot": "longshot_options.ini", "heylisten": "hookshot_options.ini", "fork": "longshot_options.ini",
+                "plus": "longshot_options.ini"}   # (saves.py OPTIONS)
 TITLE_ID_RE = re.compile(r"^[A-Z]{4}[0-9]{5}$")
-SAVE_TITLES = ("longshot", "heylisten", "fork")   # (scripts/saves.py TITLES)
+SAVE_TITLES = ("longshot", "heylisten", "fork", "plus")   # (scripts/saves.py TITLES)
 SAVES_DIR = os.path.join(CONFIG, "saves")
 BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]+-[a-z-]+$")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
@@ -123,7 +131,10 @@ def project():
     """Das gewaehlte Projekt; title_id: die des letzten Builds ($STATE/title_id, scripts/build.sh), sonst der Standard
     (PS5_Longshot ab v0.1.5 LGSH00001, bis v0.1.4 PPSA99025). TITLE_ID setzt die von longshot fest."""
     pr = dict(PROJECTS[current_project()])
-    if not (current_project() == "longshot" and os.environ.get("TITLE_ID")):
+    fixed = os.environ.get(pr["id_env"]) or (os.environ.get("TITLE_ID") if current_project() == "longshot" else None)
+    if fixed and TITLE_ID_RE.match(fixed):
+        pr["title_id"] = fixed
+    else:
         tid = read_line(os.path.join(pr["state"], "title_id"))
         if tid and TITLE_ID_RE.match(tid):
             pr["title_id"] = tid

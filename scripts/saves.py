@@ -1,7 +1,7 @@
 """Spielstaende der PS5-Titles lesen, vergleichen und per FTP von einem Title in den anderen kopieren.
 
     saves.py status                      beide Spielstand-Ordner lesen, Stand nach $CONFIG_DIR/saves/status.json
-    saves.py copy --from A --to B        Ziel sichern, dann Quelle nach Ziel spiegeln (A, B: longshot, heylisten)
+    saves.py copy --from A --to B        Ziel sichern, dann Quelle nach Ziel spiegeln (A, B: longshot, heylisten, fork, plus)
     saves.py restore --backup NAME --to B   Ziel sichern, dann das Backup NAME nach Ziel spiegeln
     saves.py backups                     vorhandene Backups
     saves.py settings-backup             die Einstellungen aller Titles sichern
@@ -38,14 +38,19 @@ import time
 
 CONFIG = os.environ.get("CONFIG_DIR", "/config")
 # Projekt -> Ordner seines Stands unter /config (wie scripts/build.sh STATE)
-STATES = {"longshot": CONFIG, "heylisten": os.path.join(CONFIG, "heylisten"), "fork": os.path.join(CONFIG, "fork")}
+STATES = {"longshot": CONFIG, "heylisten": os.path.join(CONFIG, "heylisten"), "fork": os.path.join(CONFIG, "fork"),
+          "plus": os.path.join(CONFIG, "plus")}
+# feste Title-ID je Projekt aus der Umgebung, wie in build.sh (bei longshot auch TITLE_ID)
+FIXED_ENV = {"longshot": ("TITLE_ID", "LONGSHOT_TITLE_ID"), "heylisten": ("HEYLISTEN_TITLE_ID",), "fork": ("FORK_TITLE_ID",),
+             "plus": ("PLUS_TITLE_ID",)}
 
 
 def _title_id(key, default):
     """Die Title-ID des letzten Builds ($STATE/title_id, scripts/build.sh), sonst der Standard. PS5_Longshot heisst ab
-    v0.1.5 LGSH00001 statt PPSA99025; TITLE_ID setzt die von longshot fest, wie in build.sh"""
-    if key == "longshot" and re.match(r"^[A-Z]{4}[0-9]{5}$", os.environ.get("TITLE_ID", "")):
-        return os.environ["TITLE_ID"]
+    v0.1.5 LGSH00001 statt PPSA99025; fork und plus haben eigene (LGSF00002, LGSP00003), wie in build.sh"""
+    for env in FIXED_ENV[key]:
+        if re.match(r"^[A-Z]{4}[0-9]{5}$", os.environ.get(env, "")):
+            return os.environ[env]
     try:
         with open(os.path.join(STATES[key], "title_id")) as fh:
             tid = fh.readline().strip()
@@ -58,14 +63,16 @@ def _title_id(key, default):
 
 TITLES = {"longshot": ("Longshot", _title_id("longshot", "PPSA99025")),
           "heylisten": ("HeyListen", _title_id("heylisten", "PPSA99026")),
-          "fork": ("Longshot-Fork", _title_id("fork", "PPSA99198"))}
+          "fork": ("Longshot-Fork", _title_id("fork", "LGSF00002")),
+          "plus": ("Longshot-Plus", _title_id("plus", "LGSP00003"))}
 SAVES = os.path.join(CONFIG, "saves")
 BACKUPS = os.path.join(SAVES, "backups")
 STATUS = os.path.join(SAVES, "status.json")
 HISTORY = os.path.join(SAVES, "history.json")
 KEEP_BACKUPS = 30
 SETTINGS = os.path.join(SAVES, "settings")
-OPTIONS = {"longshot": "longshot_options.ini", "heylisten": "hookshot_options.ini", "fork": "longshot_options.ini"}
+OPTIONS = {"longshot": "longshot_options.ini", "heylisten": "hookshot_options.ini", "fork": "longshot_options.ini",
+           "plus": "longshot_options.ini"}
 MAX_DOWNLOAD = 256 << 20   # (groessere Ordner werden fuer den Vergleich nicht geladen: nur Groessen und Zeiten)
 MONTHS = {m: i + 1 for i, m in enumerate(("jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"))}
 BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]+-[a-z-]+$")   # (key: Projekt oder die Title-ID klein, scripts/titles.py)
