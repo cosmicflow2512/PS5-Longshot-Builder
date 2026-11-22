@@ -36,8 +36,29 @@ import shutil
 import sys
 import time
 
-TITLES = {"longshot": ("Longshot", "PPSA99025"), "heylisten": ("HeyListen", "PPSA99026"), "fork": ("Longshot-Fork", "PPSA99198")}
 CONFIG = os.environ.get("CONFIG_DIR", "/config")
+# Projekt -> Ordner seines Stands unter /config (wie scripts/build.sh STATE)
+STATES = {"longshot": CONFIG, "heylisten": os.path.join(CONFIG, "heylisten"), "fork": os.path.join(CONFIG, "fork")}
+
+
+def _title_id(key, default):
+    """Die Title-ID des letzten Builds ($STATE/title_id, scripts/build.sh), sonst der Standard. PS5_Longshot heisst ab
+    v0.1.5 LGSH00001 statt PPSA99025; TITLE_ID setzt die von longshot fest, wie in build.sh"""
+    if key == "longshot" and re.match(r"^[A-Z]{4}[0-9]{5}$", os.environ.get("TITLE_ID", "")):
+        return os.environ["TITLE_ID"]
+    try:
+        with open(os.path.join(STATES[key], "title_id")) as fh:
+            tid = fh.readline().strip()
+        if re.match(r"^[A-Z]{4}[0-9]{5}$", tid):
+            return tid
+    except OSError:
+        pass
+    return default
+
+
+TITLES = {"longshot": ("Longshot", _title_id("longshot", "PPSA99025")),
+          "heylisten": ("HeyListen", _title_id("heylisten", "PPSA99026")),
+          "fork": ("Longshot-Fork", _title_id("fork", "PPSA99198"))}
 SAVES = os.path.join(CONFIG, "saves")
 BACKUPS = os.path.join(SAVES, "backups")
 STATUS = os.path.join(SAVES, "status.json")

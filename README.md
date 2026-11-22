@@ -1,7 +1,7 @@
 # PS5-Longshot-Builder
 
 Unraid-Container, der [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) baut: *The Legend of
-Zelda: Ocarina of Time* (Switch-2-Version), statisch rekompiliert, als natives PS5-Homebrew-Title **PPSA99025**. Aus der
+Zelda: Ocarina of Time* (Switch-2-Version), statisch rekompiliert, als natives PS5-Homebrew-Title **LGSH00001** (bis v0.1.4 `PPSA99025`). Aus der
 eigenen `.nup`, auf dem eigenen Server, ohne Fenster. Anschließend kopiert er das Title per FTP auf die PS5.
 
 Im Image sind weder Spieldateien noch Keys oder Builds, auch nicht der Builder selbst. Der Container lädt zur Laufzeit
@@ -17,8 +17,8 @@ wie bei [hookshot-ps5-builder](https://github.com/cosmicflow2512/hookshot-ps5-bu
 | --- | --- |
 | check | neuestes Release gegen den geladenen Builder und das gebaute Title (Release und Konsole) |
 | update | AppImage des gewählten Releases laden (Standard `latest`), SHA-256 prüfen, entpacken, `--cli --check` |
-| build | `AppRun --cli` (das ist `ps5/builder/pipeline.py`): `.nup` lesen, Lift, Kompilieren, Linken, Signieren, `PPSA99025` nach `/output` |
-| deploy | `/output/PPSA99025` per FTP nach `/data/homebrew/PPSA99025`, nur geänderte Dateien; prüft, ob die `.nup` dort liegt, wo Longshot sie sucht |
+| build | `AppRun --cli` (das ist `ps5/builder/pipeline.py`): `.nup` lesen, Lift, Kompilieren, Linken, Signieren, Shader-Listen, Title-Ordner nach `/output` |
+| deploy | `/output/<Title-ID>` per FTP nach `/data/homebrew/<Title-ID>`, nur geänderte Dateien; prüft, ob die `.nup` dort liegt, wo Longshot sie sucht |
 
 Grundlage sind [`ps5/builder/README.md`](https://github.com/heydemoura/PS5_Longshot/blob/main/ps5/builder/README.md),
 [`ps5/builder/pipeline.py`](https://github.com/heydemoura/PS5_Longshot/blob/main/ps5/builder/pipeline.py) (Optionen
@@ -38,13 +38,15 @@ PS5_Longshot seine Releases nicht.
 Laut [Upstream-README](https://github.com/heydemoura/PS5_Longshot/blob/main/README.md#what-you-need):
 
 - Die eigene `.nup` in genau dieser Version: Programm `0400486024DEC000`, Update v131072, Build `e0f3ccfa`.
-- Rund 10 GB freier RAM während des Builds (der Lift allein hält etwa 6 GB), rund 6 GB Platz für den Build und 1 GB
-  für den Builder.
+- Speicher: ab v0.1.5 mindestens 2 GB, gemessen in 3 GB in rund 81 Minuten, mit allem freien Speicher (etwa 19 GB) in rund
+  21 Minuten (`ps5/builder/README.md`, Memory). Bis v0.1.4 rund 10 GB. Dazu rund 6 GB Platz für den Build und 1 GB für
+  den Builder.
 - Eine PS5 mit Homebrew-Umgebung, die Titles aus `/data/homebrew` startet, und ein FTP-Server darauf (Standardport 2121).
   Wie man das einrichtet, erklärt Upstream nicht; eine Firmware-Version nennt Upstream nicht.
 
-Stand laut Upstream (16.11.2026): experimentell, nur auf einer PS5 Pro gemessen, bis Kokiri-Wald gespielt. Keine
-Base-PS5 hat es gestartet. Das Lesen einer `.nup` durch den Builder ist laut `ps5/builder/README.md` noch nicht getestet.
+Stand laut [Upstream-README](https://github.com/heydemoura/PS5_Longshot/blob/main/README.md) (22.11.2026):
+experimentell. Läuft auf der PS5 Pro und der Base-PS5 (PS5 und PS5 Slim, Profil `base`), dort laut Upstream mit
+Frame Generation etwa 20 Bilder je Sekunde weniger als auf der Pro.
 
 ## Installation (Unraid)
 
@@ -65,7 +67,7 @@ In der Web-UI unter **Projekt** (gespeichert in `/config/project`, geht vor `PRO
 | --- | --- | --- | --- |
 | Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) | [cosmicflow2512/PS5_Longshot_Cosi](https://github.com/cosmicflow2512/PS5_Longshot_Cosi) |
 | AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` | `LongshotPS5Builder-<tag>-x86_64.AppImage` |
-| Title | `PPSA99025` | `PPSA99026` | `PPSA99198` |
+| Title | `LGSH00001` (bis v0.1.4 `PPSA99025`) | `PPSA99026` | `PPSA99198` |
 | Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` | `FORK_REF` |
 | Builder, Build-Dateien, Stand | direkt unter `/config` (wie bisher) | unter `/config/heylisten` | unter `/config/fork` |
 
@@ -86,12 +88,35 @@ PS5_HeyListen ist **experimentell**: HeyListens Engine mit dem PS5-Port von PS5_
 gestartet. Seine Builder-AppImage baut der Workflow `ps5-builder-release.yml` dort. Solange es kein Release mit
 AppImage gibt, meldet „Auf Updates prüfen“ für `heylisten` einen Fehler.
 
+## Title-ID
+
+Die Title-ID kommt aus `kit.json` des Builders (`title_id`, aus `ps5/sce_sys/param.json` des Releases). PS5_Longshot
+heißt ab v0.1.5 `LGSH00001`, bis v0.1.4 `PPSA99025` ([9bc1211c](https://github.com/heydemoura/PS5_Longshot/commit/9bc1211c)): `PPSA99025` ist auch die ID eines anderen
+Homebrews, und zwei Titles mit derselben ID installieren sich übereinander. Ein Build merkt sich die ID in
+`<Stand>/title_id` und in `build-info.json`; Deploy, Web-UI, Spielstände und Titles nehmen sie von dort, ein archivierter
+Build seine eigene. `TITLE_ID` setzt die von `longshot` fest.
+
+Umstieg von v0.1.4 oder älter: neu bauen und deployen. Beim ersten Start übernimmt `LGSH00001` aus
+`/data/homebrew/PPSA99025` (nur wenn dessen `param.json` Longshots ist) `user/` (Spielstände), `longshot_options.ini`
+und `language.txt`, wo das neue Title sie nicht hat, und verschiebt `cache/` und `radv-shader-cache/`, damit die
+Shader-Vorbereitung nicht noch einmal läuft (`host/ps5/migrate_id.c`). Danach kann der alte Ordner auf der PS5 (Reiter
+Titles) und unter `/output` weg; Build und Deploy weisen darauf hin.
+
+## ZBIC
+
+Die `main` einer `.nup` von Firmware 22+ ist ZBIC-komprimiert. Seit PS5_Longshot v0.1.3 bringt die AppImage eine mit dem
+LLVM des Kits gebaute `zbic.so` mit, die `--check` mit einem Selbsttest prüft ([46f7bb26](https://github.com/heydemoura/PS5_Longshot/commit/46f7bb26),
+[318696dc](https://github.com/heydemoura/PS5_Longshot/commit/318696dc)). Die von v0.1.1 und v0.1.2 entpackt laut Upstream keinen ZBIC-Frame, v0.1.0 hat keine. Für eine
+`.nup` also v0.1.3 oder neuer nehmen. Nur wenn ein Builder gar keine `zbic.so` hat, baut `build.sh` sie wie früher mit
+gcc, mit Warnung: Upstream hat genau eine GCC-gebaute als defekt gemessen.
+
 ## Spielstände zwischen Longshot und HeyListen
 
 In der Web-UI unter **Spielstände** (Skript `scripts/saves.py`, Stufen `saves-status`, `saves-copy`, `saves-restore`), zwischen
-allen drei Titles (`PPSA99025`, `PPSA99026`, `PPSA99198`):
+allen drei Titles (Longshot `LGSH00001` bzw. bis v0.1.4 `PPSA99025`, `PPSA99026`, `PPSA99198`; jeweils die ID des
+letzten Builds):
 
-- **Spielstände von der PS5 lesen:** liest per FTP `/data/homebrew/PPSA99025/user/save` und `/data/homebrew/PPSA99026/user/save`,
+- **Spielstände von der PS5 lesen:** liest per FTP `/data/homebrew/<Title-ID>/user/save` der drei Titles,
   zeigt je Spiel Dateien, Größe und letzte Änderung und markiert den neueren Stand bzw. „gleich“ (Inhalt verglichen).
 - **Kopieren** (z. B. Longshot → HeyListen): sichert zuerst das Ziel nach `/config/saves/backups/<Zeit>-<spiel>-vor-kopie`,
   liest die Quelle und spiegelt sie ins Ziel (Dateien, die nur im Ziel lagen, werden entfernt; sie sind im Backup), prüft
@@ -134,8 +159,8 @@ Herkunft (Repository, Release, Konsole, Build-Zeit), Größe und die Zahl der Sp
 `build-info.json`, die Build und Deploy seit dieser Version mit in den Title legen. Bei älteren Deploys steht stattdessen das
 Datum der `eboot.bin`.
 
-- **Umbenennen** ändert den angezeigten Namen (`titleName` für alle Sprachen in `param.json`) auf der PS5. Bei PPSA99025,
-  PPSA99026 und PPSA99198 merkt sich der Container den Namen, und Build und Deploy behalten ihn. Ob der Startbildschirm den
+- **Umbenennen** ändert den angezeigten Namen (`titleName` für alle Sprachen in `param.json`) auf der PS5. Bei den Titles der
+  drei Projekte (auch dem alten `PPSA99025`) merkt sich der Container den Namen, und Build und Deploy behalten ihn. Ob der Startbildschirm den
   neuen Namen sofort zeigt, hängt von der Homebrew-Umgebung ab (ungeprüft).
 - **Löschen** sichert erst die Spielstände nach `/config/saves/backups` (`<Zeit>-<Projekt oder Title-ID>-vor-loeschen`,
   zurückspielbar wie die anderen Backups), dann wird der ganze Ordner gelöscht. Zur Sicherheit muss die Title-ID eingetippt
@@ -176,19 +201,23 @@ ein früheres Release lädt dann nichts neu.
 
 ## Spielsprache
 
-In der Web-UI unter **Spielsprache** (gespeichert in `/config/language`, geht vor `LANGUAGE`, Standard `de`). `build.sh`
-schreibt den Code nach `PPSA99025/language.txt`, im selben Format, das das Spiel beim ersten Start selbst anlegt. Das
-Spiel liest die erste Zeile, die kein Kommentar ist und einen seiner 16 Codes nennt; ohne Datei spielt es Englisch (US)
-(`host/nn_applet.c`, `desired_language`). Die Datei wird bei jedem Build und jedem Deploy geschrieben, eine andere
-Sprache braucht also kein neues Kompilieren: Sprache wählen, „Auf die PS5 kopieren".
+In der Web-UI unter **Spielsprache** (gespeichert in `/config/language`, geht vor `LANGUAGE`). Standard ist **„Sprache
+der Konsole folgen“**: `build.sh` legt keine `language.txt` ins Title (eine früher geschriebene entfernt es aus
+`/output`). Ab v0.1.4 nimmt das Spiel dann die Systemsprache der PS5, Englisch (US), wenn es sie nicht hat
+([b35353ce](https://github.com/heydemoura/PS5_Longshot/commit/b35353ce)), und hat im Menü (Touchpad-Klick + Options, Reiter Gameplay) die Zeile „Game language“ mit
+„Follow the console“ und den 16 Sprachen; sie schreibt `language.txt` im Title-Ordner auf der Konsole
+([e85812a8](https://github.com/heydemoura/PS5_Longshot/commit/e85812a8), dort auf der Konsole getestet). Bis v0.1.3 hieß „keine Sprache“ Englisch (US).
 
-Im Spiel gibt es außerdem die Zeile „Game language" im Menü (Touchpad-Klick + Options, Reiter Gameplay), die
-`language.txt` neu schreibt. Ob das Title auf der Konsole in seinen Ordner schreiben kann (es liest ihn als `/app0`), ist
-ungeprüft. Ein späteres Deploy mit geänderter Sprache überschreibt die Wahl aus dem Spiel.
+Eine feste Sprache schreibt `build.sh` bei Build und Deploy als Code nach `<Title-ID>/language.txt`, im Format, das das
+Spiel selbst liest (`host/nn_applet.c`, `desired_language`: die erste Zeile, die kein Kommentar ist und einen der 16
+Codes nennt). Das Deploy lädt nur Dateien, die sich seit dem letzten Deploy geändert haben: eine im Spielmenü gewählte
+Sprache bleibt, bis hier eine andere feste Sprache gewählt wird (oder `FORCE_DEPLOY=true`). Auf „Konsole folgen“
+zurückschalten löscht eine `language.txt` auf der PS5 nicht; dafür im Spielmenü „Follow the console“ wählen.
 
 ## Auf der PS5
 
-1. „Auf die PS5 kopieren" (oder `AUTO_DEPLOY=true`) legt `PPSA99025` nach `/data/homebrew/PPSA99025`.
+1. „Auf die PS5 kopieren" (oder `AUTO_DEPLOY=true`) legt das Title nach `/data/homebrew/<Title-ID>` (Longshot ab v0.1.5
+   `/data/homebrew/LGSH00001`).
 2. Die `.nup` gehört laut Upstream nach `/data/eglantineps5/roms/oot.nup`. Gesucht wird sie laut
    `host/ps5/win32_ps5.c` auch unter `/data/eglantineps5/roms/<Name des Dumps>.nup`, `/data/lichii/roms/oot/oot.nup`
    und `/data/prosperoeden/roms/oot/oot.nup`. Eine `.nup` von PS5_Hookshot oder PS5_Lichii wird also gefunden.
@@ -201,10 +230,18 @@ unberührt. `longshot_env.txt` kommt aus dem Build und wird ersetzt.
 ## Speicher
 
 Das Template begrenzt den Container mit `--memory=12g --memory-swap=12g`. Das Limit muss unter dem RAM liegen, der auf
-dem Host tatsächlich frei ist (`free -m`, Spalte available). `pipeline.py` teilt Compiler und Lift nach dem freien RAM
-des Hosts ein und sieht ein Container-Limit nicht. Mit Limit setzt `build.sh` deshalb `--jobs` (Kerne − 1, höchstens
-Limit ÷ 1,6 GB) und `--lift-jobs` (1 unter 10 GB, sonst (Limit − 4 GB) ÷ 2 GB) selbst. Ein abgebrochener Build setzt beim
-nächsten Lauf fort.
+dem Host tatsächlich frei ist (`free -m`, Spalte available). `pipeline.py` liest den freien Speicher aus `/proc/meminfo`
+und sieht ein Container-Limit nicht.
+
+- **Builder mit `--memory`** (PS5_Longshot ab v0.1.5, [b4e23503](https://github.com/heydemoura/PS5_Longshot/commit/b4e23503)): Übersetzung und Compiles halten sich an
+  das Budget, große Funktionen und Chunks werden geteilt, ein Compile startet erst, wenn sein Bedarf passt. `build.sh`
+  gibt `--memory` = `MEMORY_GB`, sonst Container-Limit − 1 GB (mindestens 2), und `--jobs`/`--lift-jobs` nur, wenn
+  `JOBS` bzw. `LONGSHOT_LIFT_JOBS` gesetzt sind. Ob der Builder die Option hat, prüft `build.sh` mit `--cli --help`.
+  Weniger Speicher ist laut Upstream nur langsamer, das Ergebnis gleich. Linken und Signieren halten kurz rund 3 GB.
+- **Ältere Builder**: mit Limit setzt `build.sh` `--jobs` (Kerne − 1, höchstens Limit ÷ 1,6 GB) und `--lift-jobs`
+  (1 unter 10 GB, sonst (Limit − 4 GB) ÷ 2 GB) selbst.
+
+Ein abgebrochener Build setzt beim nächsten Lauf fort.
 
 ## Variablen
 
@@ -212,7 +249,7 @@ nächsten Lauf fort.
 | --- | --- | --- |
 | `NUP_FILE` | leer | Pfad der `.nup` im Container. Leer: erste `.nup` mit `0400486024DEC000` im Namen unter `/nup` |
 | `MODEL` | `pro` | `pro` oder `base`, solange in der Web-UI nichts gewählt ist |
-| `LANGUAGE` | `de` | Spielsprache (`language.txt`), solange in der Web-UI nichts gewählt ist; leer: keine Datei, das Spiel nimmt Englisch (US) |
+| `LANGUAGE` | leer | feste Spielsprache (`language.txt`), solange in der Web-UI nichts gewählt ist; leer oder `auto`: der Konsole folgen |
 | `PROJECT` | `longshot` | `longshot` oder `heylisten`, solange in der Web-UI nichts gewählt ist |
 | `LONGSHOT_REF` | `latest` | `latest` = neuestes Release, oder ein Tag (`v0.1.0`) |
 | `HEYLISTEN_REF` | `latest` | wie `LONGSHOT_REF`, für `heylisten` |
@@ -227,6 +264,8 @@ nächsten Lauf fort.
 | `FORCE_DEPLOY` | `false` | alle Dateien neu hochladen |
 | `PUID` / `PGID` | `99` / `100` | Besitzer des Title-Ordners nach dem Build |
 | `RUN_ON_START` | `false` | beim Containerstart sofort bauen |
+| `MEMORY_GB` | Limit − 1 GB | Speicher für den Build (`--memory`, ab v0.1.5) |
+| `TITLE_ID` | aus dem Builder | Title-ID von `longshot` fest setzen |
 | `JOBS` | siehe Speicher | Compiler gleichzeitig (`--jobs`) |
 | `LONGSHOT_LIFT_JOBS` | siehe Speicher | Prozesse des Lifts (`--lift-jobs`) |
 | `GITHUB_TOKEN` | leer | optional, hebt die Grenze der GitHub-API (60 Abfragen je Stunde ohne Token) |

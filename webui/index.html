@@ -107,7 +107,7 @@
           <div><h2>Konsole</h2><select id="model"></select></div>
           <div><h2>Spielsprache</h2><select id="lang"></select></div>
         </div>
-        <div class="msg">Konsole: Base läuft auch auf der Pro (im Modus der Base), gilt ab dem nächsten Build. Sprache: language.txt im Title, gilt ab dem nächsten Build oder Deploy. Beides gilt für alle Projekte.</div>
+        <div class="msg">Konsole: Base läuft auch auf der Pro (im Modus der Base), gilt ab dem nächsten Build. Sprache: „Konsole folgen“ legt keine language.txt ins Title, dann nimmt das Spiel (ab v0.1.4) die Sprache der PS5, und eine im Spielmenü gewählte bleibt; eine feste Sprache steht in language.txt, gilt ab dem nächsten Build oder Deploy. Beides gilt für alle Projekte.</div>
       </section>
       <section>
         <h2>Stand</h2>
@@ -238,7 +238,7 @@ async function refresh() {
     if (shownProject !== null && shownProject !== s.project) { loadReleases(false); loadBuilds(); }
     shownProject = s.project;
     if (!$('#model').options.length) fillSelect($('#model'), Object.entries(s.models).map(([v, t]) => [v, t + ' (' + v + ')']));
-    if (!$('#lang').options.length) fillSelect($('#lang'), Object.entries(s.languages).map(([v, t]) => [v, t + ' (' + v + ')']));
+    if (!$('#lang').options.length) fillSelect($('#lang'), Object.entries(s.languages).map(([v, t]) => [v, v === 'auto' ? t : t + ' (' + v + ')']));
     if (document.activeElement !== $('#model')) $('#model').value = s.model;
     if (document.activeElement !== $('#lang')) $('#lang').value = s.language;
     $('#nup').textContent = s.nup || 'keine .nup gefunden';
