@@ -3,6 +3,8 @@
 # Releases, ohne Fenster:
 #   longshot   heydemoura/PS5_Longshot      LongshotPS5Builder-<tag>-x86_64.AppImage    LGSH00001 (bis v0.1.4 PPSA99025)
 #   heylisten  cosmicflow2512/PS5_HeyListen  HeyListenPS5Builder-<tag>-x86_64.AppImage   PPSA99026
+#   fork       cosmicflow2512/PS5_Longshot_Cosi  LongshotPS5Builder-<tag>-x86_64.AppImage  LGSF00002 (eigene, siehe OWN_TITLE_ID)
+#   plus       groovy2312/PS5_Longshot_Plus  PS5LongshotPlusBuilder-<tag>-x86_64.AppImage LGSP00003 (eigene, siehe OWN_TITLE_ID)
 # Das Projekt kommt aus der Web-UI ($CONFIG_DIR/project), sonst aus PROJECT (Standard longshot). Builder, Build-Dateien,
 # Die Title-ID kommt aus kit.json des Builders (set_title). Release-Wahl und Stand liegen je Projekt getrennt: longshot wie bisher direkt unter $CONFIG_DIR, heylisten unter
 # $CONFIG_DIR/heylisten. Konsole und Sprache gelten fuer beide.
@@ -26,19 +28,29 @@ NUP_DIR=${NUP_DIR:-/nup}
 OUT_DIR=${OUT_DIR:-/output}
 PROJECT=${PROJECT:-longshot}
 if [[ -s $CONFIG_DIR/project ]]; then PROJECT=$(tr -d ' \r\n' < "$CONFIG_DIR/project"); fi
+ENV_TITLE_ID=${TITLE_ID:-}   # (vor dem case: dort wird TITLE_ID zum Standard des Projekts)
 case $PROJECT in
     longshot)
-        REPO=${LONGSHOT_REPO:-heydemoura/PS5_Longshot} NAME=LongshotPS5Builder FIXED_TITLE_ID=${TITLE_ID:-} TITLE_ID=PPSA99025
-        STATE=$CONFIG_DIR REF=${LONGSHOT_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot ;;
+        REPO=${LONGSHOT_REPO:-heydemoura/PS5_Longshot} NAME=LongshotPS5Builder TITLE_ID=PPSA99025
+        FIXED_TITLE_ID=${ENV_TITLE_ID:-${LONGSHOT_TITLE_ID:-}} OWN_TITLE_ID=""
+        STATE=$CONFIG_DIR REF=${LONGSHOT_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot GAME_TITLE=Longshot ;;
     heylisten)
         # (PS5_HeyListen: HeyListens Engine mit dem PS5-Port von PS5_Longshot; die Quellen liegen dort unter engine/)
-        REPO=${HEYLISTEN_REPO:-cosmicflow2512/PS5_HeyListen} NAME=HeyListenPS5Builder FIXED_TITLE_ID="" TITLE_ID=PPSA99026
-        STATE=$CONFIG_DIR/heylisten REF=${HEYLISTEN_REF:-latest} SRC_PREFIX="engine/" GAME_NAME=HeyListen ;;
+        REPO=${HEYLISTEN_REPO:-cosmicflow2512/PS5_HeyListen} NAME=HeyListenPS5Builder TITLE_ID=PPSA99026
+        FIXED_TITLE_ID=${HEYLISTEN_TITLE_ID:-} OWN_TITLE_ID=""
+        STATE=$CONFIG_DIR/heylisten REF=${HEYLISTEN_REF:-latest} SRC_PREFIX="engine/" GAME_NAME=HeyListen GAME_TITLE=HeyListen ;;
     fork)
-        # (der eigene Fork von PS5_Longshot mit den offenen Pull Requests, Title PPSA99198 nach PR #35)
-        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot_Cosi} NAME=LongshotPS5Builder FIXED_TITLE_ID="" TITLE_ID=PPSA99198
-        STATE=$CONFIG_DIR/fork REF=${FORK_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot-Fork ;;
-    *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot, heylisten oder fork)\n' "$PROJECT" >&2; exit 1 ;;
+        # (der eigene Fork von PS5_Longshot mit den offenen Pull Requests. Sein Kit heisst seit v3.0.0-ps5.7 wie Upstream
+        # LGSH00001, davor PPSA99198: eigene ID, damit er neben Longshot liegt)
+        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot_Cosi} NAME=LongshotPS5Builder TITLE_ID=LGSF00002
+        FIXED_TITLE_ID=${FORK_TITLE_ID:-} OWN_TITLE_ID=LGSF00002
+        STATE=$CONFIG_DIR/fork REF=${FORK_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot-Fork GAME_TITLE=Longshot ;;
+    plus)
+        # (groovy2312/PS5_Longshot_Plus: ein Fork von PS5_Longshot. Sein Kit heisst PPSA99198 wie der Fork bis ps5.6: eigene ID)
+        REPO=${PLUS_REPO:-groovy2312/PS5_Longshot_Plus} NAME=PS5LongshotPlusBuilder TITLE_ID=LGSP00003
+        FIXED_TITLE_ID=${PLUS_TITLE_ID:-} OWN_TITLE_ID=LGSP00003
+        STATE=$CONFIG_DIR/plus REF=${PLUS_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot-Plus GAME_TITLE="Longshot Plus" ;;
+    *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot, heylisten, fork oder plus)\n' "$PROJECT" >&2; exit 1 ;;
 esac
 GH="https://github.com/$REPO"
 API="https://api.github.com/repos/$REPO"
@@ -70,7 +82,8 @@ if [[ -s $CONFIG_DIR/keep_builders ]]; then KEEP_BUILDERS=$(tr -d ' \r\n' < "$CO
 BUILD_INFO="$STATE/build-info.json"
 WORK="$STATE/work"
 # Title-ID des letzten Builds ($STATE/title_id, von stage_build geschrieben), sonst der Standard des Projekts. Ein Build
-# nimmt die des Kits (set_title kit). TITLE_ID (nur longshot) setzt sie fest.
+# nimmt die feste (<PROJEKT>_TITLE_ID, bei longshot auch TITLE_ID), sonst die eigene des Projekts (OWN_TITLE_ID: fork und
+# plus, deren Kits sonst mit Longshot bzw. dem alten Fork-Ordner zusammenfielen), sonst die des Kits (set_title_from_kit).
 if [[ -n $FIXED_TITLE_ID ]]; then TITLE_ID=$FIXED_TITLE_ID
 elif [[ -s $STATE/title_id ]]; then TITLE_ID=$(tr -d ' \r\n' < "$STATE/title_id"); fi
 TITLE="$OUT_DIR/$TITLE_ID"
@@ -156,7 +169,8 @@ copy_fsr4() {
 }
 
 # Was der Title ueber sich mitbringt, fuer scripts/titles.py auf der PS5: build-info.json (Projekt, Repository, Release,
-# Konsole, Zeit) und der angezeigte Name aus $STATE/title_name (in der Web-UI unter "Titles auf der PS5" umbenannt).
+# Konsole, Zeit) und der angezeigte Name: aus $STATE/title_name (in der Web-UI unter "Titles auf der PS5" umbenannt), sonst
+# "<Spiel> <Version>" (AUTO_TITLE_NAME=false: der Name des Kits bleibt).
 title_extras() {
     [[ -d $TITLE ]] || return 0
     if [[ -f $BUILD_INFO ]]; then
@@ -167,8 +181,13 @@ j.update(project=os.environ["PROJECT"], repo=os.environ["REPO"])
 open(sys.argv[2], "w").write(json.dumps(j) + "\n")
 PY
     fi
-    local param=$TITLE/sce_sys/param.json name=""
+    # (Name: der in der Web-UI gegebene, sonst Projekt und Version des Builds, z. B. "Longshot ps5.7")
+    local param=$TITLE/sce_sys/param.json name="" tag
     [[ -s $STATE/title_name ]] && name=$(head -n1 "$STATE/title_name" | tr -d '\r')
+    if [[ -z $name && ${AUTO_TITLE_NAME:-true} == true ]]; then
+        tag=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("tag", ""))' "$BUILD_INFO" 2>/dev/null || true)
+        [[ -n $tag ]] && name="$GAME_TITLE $(short_version "$tag")"
+    fi
     [[ -n $name && -f $param ]] || return 0
     TITLE_NAME=$name python3 - "$param" <<'PY' && echo "  angezeigter Name: $name"
 import json, os, sys
@@ -308,10 +327,52 @@ kit_title_id() {
 }
 set_title_from_kit() {
     local id=$FIXED_TITLE_ID
+    [[ -n $id ]] || id=$OWN_TITLE_ID
     [[ -n $id ]] || id=$(kit_title_id)
     [[ -n $id ]] || return 0
-    [[ $id =~ ^[A-Z]{4}[0-9]{5}$ ]] || die "unerwartete Title-ID im Kit: $id"
+    [[ $id =~ ^[A-Z]{4}[0-9]{5}$ ]] || die "unerwartete Title-ID: $id (vier Grossbuchstaben, fuenf Ziffern)"
     TITLE_ID=$id TITLE="$OUT_DIR/$id"
+}
+
+# Der Ordner, den pipeline.py macht (<out>/<ID des Kits>), kommt aus einem eigenen Zwischenordner je Projekt nach
+# $OUT_DIR/<Title-ID>: so ueberschreibt kein Projekt den Ordner eines anderen, dessen Kit dieselbe ID hat. Weicht die ID
+# vom Kit ab, bekommt param.json die neue in titleId, contentId (der ID-Teil, das Etikett behaelt PS5LONGSHOT, daran
+# erkennt host/ps5/migrate_id.c Longshots Ordner) und conceptId (ihre Ziffern). Das ist dieselbe Aenderung, mit der
+# PS5_Longshot selbst die ID gewechselt hat (9bc1211c, nur ps5/sce_sys/param.json); eboot.bin wird ohne ID signiert
+# (pipeline.py title: "self --sign" ohne Content-ID), und pipeline.py schreibt param.json nach dem Signieren selbst.
+place_title() {
+    local stage=$1 kit_id src
+    kit_id=$(kit_title_id)
+    src="$stage/${kit_id:-$TITLE_ID}"
+    [[ -f $src/eboot.bin ]] || { src=$(dirname "$(find "$stage" -mindepth 2 -maxdepth 2 -name eboot.bin -print -quit)"); }
+    [[ -n $src && -f $src/eboot.bin ]] || die "kein Title-Ordner mit eboot.bin unter $stage nach dem Build"
+    rm -rf "$TITLE.old"
+    [[ -d $TITLE ]] && mv "$TITLE" "$TITLE.old"
+    mv "$src" "$TITLE"
+    rm -rf "$TITLE.old"
+    local param=$TITLE/sce_sys/param.json
+    [[ -f $param ]] || return 0
+    TID=$TITLE_ID python3 -I - "$param" <<'PY'
+import json, os, re, sys
+p, tid = sys.argv[1], os.environ["TID"]
+j = json.load(open(p, encoding="utf-8"))
+old = j.get("titleId")
+if old != tid:
+    j["titleId"] = tid
+    cid = j.get("contentId", "")
+    j["contentId"] = re.sub(r"-[A-Z]{4}[0-9]{5}_", "-%s_" % tid, cid) if re.search(r"-[A-Z]{4}[0-9]{5}_", cid) else cid
+    if "conceptId" in j:
+        j["conceptId"] = tid[4:]
+    open(p, "w", encoding="utf-8", newline="\n").write(json.dumps(j, indent=2, ensure_ascii=False) + "\n")
+    print("  Title-ID: %s statt %s des Kits (param.json: titleId, contentId %s, conceptId %s)" % (tid, old, j["contentId"], j.get("conceptId")))
+PY
+}
+
+# Kurzform der Version fuer den angezeigten Namen: v3.0.0-ps5.7 -> ps5.7, v0.3.2-plus -> v0.3.2, sonst das Tag.
+short_version() {
+    local t=$1
+    if [[ $t =~ -(ps5\.[0-9]+)$ ]]; then echo "${BASH_REMATCH[1]}"; return; fi
+    echo "${t%-plus}"
 }
 
 stage_update() {
@@ -511,7 +572,9 @@ stage_build() {
     else
         die "keine .nup unter $NUP_DIR gefunden (NUP_FILE setzen) und kein exefs eines frueheren Builds unter $WORK"
     fi
-    args=(--game "$game" --out "$OUT_DIR" --model "$MODEL" --work "$WORK")
+    local stage="$OUT_DIR/.build-$PROJECT"   # (Zwischenordner, place_title)
+    mkdir -p "$stage"
+    args=(--game "$game" --out "$stage" --model "$MODEL" --work "$WORK")
     if "$run" --cli --help 2>/dev/null | grep -q -- '--memory'; then
         # (v0.1.5+: Upstream verteilt Uebersetzung und Compiles im Budget selbst; JOBS/LONGSHOT_LIFT_JOBS nur, wenn gesetzt)
         [[ -n $MEMORY_GB ]] && args+=(--memory "$MEMORY_GB")
@@ -542,6 +605,7 @@ stage_build() {
         fi
         die "der Build ist abgebrochen (Meldung oben). Ein neuer Build setzt fort, wo er war (work bleibt unter $WORK)"
     fi
+    place_title "$stage"
     [[ -f $TITLE/eboot.bin && -f $TITLE/image.bin ]] || die "eboot.bin oder image.bin fehlt nach dem Build in $TITLE"
     write_language
     copy_lossless

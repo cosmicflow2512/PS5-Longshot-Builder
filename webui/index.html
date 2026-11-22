@@ -167,8 +167,8 @@
 const $ = s => document.querySelector(s);
 let next = 0, lastLog = null, shownProject = null, lastEnded = undefined, psReady = false, busy = false;
 let savesData = null, titlesData = null, lastStatus = null;
-const NAMES = { longshot: 'Longshot', heylisten: 'HeyListen', fork: 'Longshot-Fork' };
-const PROJ_NAMES = { longshot: 'Projekt Longshot', heylisten: 'Projekt HeyListen', fork: 'Projekt Longshot-Fork' };
+const NAMES = { longshot: 'Longshot', heylisten: 'HeyListen', fork: 'Longshot-Fork', plus: 'Longshot-Plus' };
+const PROJ_NAMES = { longshot: 'Projekt Longshot', heylisten: 'Projekt HeyListen', fork: 'Projekt Longshot-Fork', plus: 'Projekt Longshot-Plus' };
 async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
 function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
 function fmtIso(t) { return t ? new Date(t).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '?'; }
@@ -381,8 +381,8 @@ async function loadSaves() {
   if (!$('#savefrom').options.length) {
     fillSelect($('#savefrom'), titles); fillSelect($('#saveto'), titles); fillSelect($('#restoreto'), titles);
     fillSelect($('#setrestoreto'), titles);
-    fillSelect($('#setfrom'), [['longshot', 'Longshot'], ['fork', 'Longshot-Fork']]);
-    fillSelect($('#setto'), [['fork', 'Longshot-Fork'], ['longshot', 'Longshot']]);
+    fillSelect($('#setfrom'), [['longshot', 'Longshot'], ['fork', 'Longshot-Fork'], ['plus', 'Longshot-Plus']]);
+    fillSelect($('#setto'), [['fork', 'Longshot-Fork'], ['plus', 'Longshot-Plus'], ['longshot', 'Longshot']]);
     $('#saveto').value = 'heylisten';
   }
   if (st && st.newer && document.activeElement !== $('#savefrom') && !$('#savefrom').dataset.touched) {

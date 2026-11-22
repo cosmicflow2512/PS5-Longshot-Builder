@@ -37,7 +37,9 @@ ID_RE = re.compile(r"^[A-Z]{4}[0-9]{5}$")
 # Title-ID -> (Projekt, Ordner seines Stands unter /config), wie scripts/build.sh: die aktuellen IDs (saves.TITLES, aus
 # $STATE/title_id), dazu die frueheren Standards (Longshot bis v0.1.4: PPSA99025, ab v0.1.5 LGSH00001)
 PROJECT_OF = {tid: (key, saves.STATES[key]) for key, (_, tid) in saves.TITLES.items()}
-for _tid, _key in (("PPSA99025", "longshot"), ("LGSH00001", "longshot"), ("PPSA99026", "heylisten"), ("PPSA99198", "fork")):
+# (PPSA99198: der Fork bis v3.0.0-ps5.6, auch die ID im Kit von PS5_Longshot_Plus; LGSF00002/LGSP00003: eigene von fork/plus)
+for _tid, _key in (("PPSA99025", "longshot"), ("LGSH00001", "longshot"), ("PPSA99026", "heylisten"), ("PPSA99198", "fork"),
+                   ("LGSF00002", "fork"), ("LGSP00003", "plus")):
     PROJECT_OF.setdefault(_tid, (_key, saves.STATES[_key]))
 ZELDA_WORDS = ("longshot", "heylisten", "hookshot", "zelda", "ocarina")
 PORT_FILES = ("image.bin", "longshot_env.txt", "hookshot_env.txt", "longshot_options.ini", "hookshot_options.ini")

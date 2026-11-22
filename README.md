@@ -59,17 +59,17 @@ curl -fsSL -o /boot/config/plugins/dockerMan/templates-user/my-ps5-longshot-buil
 Danach unter Docker → Add Container das Template `ps5-longshot-builder` wählen, `PS5_HOST` eintragen und die Web-UI
 öffnen (Port 8486).
 
-## Projekt: Longshot oder HeyListen
+## Projekt: Longshot, HeyListen, Fork oder Plus
 
 In der Web-UI unter **Projekt** (gespeichert in `/config/project`, geht vor `PROJECT`, Standard `longshot`):
 
-| | `longshot` | `heylisten` | `fork` |
-| --- | --- | --- | --- |
-| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) | [cosmicflow2512/PS5_Longshot_Cosi](https://github.com/cosmicflow2512/PS5_Longshot_Cosi) |
-| AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` | `LongshotPS5Builder-<tag>-x86_64.AppImage` |
-| Title | `LGSH00001` (bis v0.1.4 `PPSA99025`) | `PPSA99026` | `PPSA99198` |
-| Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` | `FORK_REF` |
-| Builder, Build-Dateien, Stand | direkt unter `/config` (wie bisher) | unter `/config/heylisten` | unter `/config/fork` |
+| | `longshot` | `heylisten` | `fork` | `plus` |
+| --- | --- | --- | --- | --- |
+| Repository | [heydemoura/PS5_Longshot](https://github.com/heydemoura/PS5_Longshot) | [cosmicflow2512/PS5_HeyListen](https://github.com/cosmicflow2512/PS5_HeyListen) | [cosmicflow2512/PS5_Longshot_Cosi](https://github.com/cosmicflow2512/PS5_Longshot_Cosi) | [groovy2312/PS5_Longshot_Plus](https://github.com/groovy2312/PS5_Longshot_Plus) |
+| AppImage | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `HeyListenPS5Builder-<tag>-x86_64.AppImage` | `LongshotPS5Builder-<tag>-x86_64.AppImage` | `PS5LongshotPlusBuilder-<tag>-x86_64.AppImage` |
+| Title | `LGSH00001` (bis v0.1.4 `PPSA99025`) | `PPSA99026` | `LGSF00002` (eigene; Kit: `LGSH00001`, bis ps5.6 `PPSA99198`) | `LGSP00003` (eigene; Kit: `PPSA99198`) |
+| Release-Vorgabe | `LONGSHOT_REF` | `HEYLISTEN_REF` | `FORK_REF` | `PLUS_REF` |
+| Builder, Build-Dateien, Stand | direkt unter `/config` (wie bisher) | unter `/config/heylisten` | unter `/config/fork` | unter `/config/plus` |
 
 `fork` ist PS5_Longshot v0.1.3 mit den offenen Pull Requests #6, #18–#23, #32, #33 und #35 (darunter der Entwurf #21,
 Lossless Scaling). #35 verlegt das Title auf `PPSA99198`, weil das Homebrew reUndr `PPSA99025` nutzt. Mit dem Ordner
@@ -81,7 +81,31 @@ SHA-256 und die `SHA256SUMS` im Archiv, behält es unter `/config/fsr4` und legt
 (Stufen 1080p und 2160p, mit AMDs Lizenzhinweis) ins Title. `FSR4_ASSETS=all` nimmt zusätzlich `fsr4/int8/` (navi2) mit,
 `FSR4_ASSETS=off` lässt FSR 4 weg.
 
-Beide Titles können nebeneinander auf der PS5 liegen. Konsole und Spielsprache gelten für beide Projekte. Die `.nup`
+`plus` ist [PS5_Longshot_Plus](https://github.com/groovy2312/PS5_Longshot_Plus) von groovy2312, ein Fork von PS5_Longshot
+mit eigenem Builder (`PS5LongshotPlusBuilder`, gleiche `pipeline.py` mit `--cli` und `--memory`). Releases mit Linux-AppImage:
+`v0.2.0-plus`, `v0.3.0-plus`, `v0.3.2-plus` (`v0.3.1-plus` hat keine). Wie bei Upstream sind die Releases nicht signiert.
+
+Alle Titles können nebeneinander auf der PS5 liegen. Konsole und Spielsprache gelten für alle Projekte.
+
+### Eigene Title-IDs und Name mit Version
+
+Die Kits von `fork` (seit v3.0.0-ps5.7 `LGSH00001`, wie Longshot) und `plus` (`PPSA99198`, wie der Fork bis ps5.6) fielen
+mit anderen Titles zusammen: ein Deploy des einen hätte das andere auf der PS5 ersetzt. Beide bekommen deshalb eine eigene
+ID, `LGSF00002` und `LGSP00003` (feste: `FORK_TITLE_ID`, `PLUS_TITLE_ID`, `LONGSHOT_TITLE_ID`, `HEYLISTEN_TITLE_ID`).
+`pipeline.py` baut in einen Zwischenordner `/output/.build-<Projekt>`, `build.sh` legt das Ergebnis nach
+`/output/<Title-ID>` und setzt in `param.json` `titleId`, den ID-Teil von `contentId` (das Etikett `PS5LONGSHOT…` bleibt,
+daran erkennt `host/ps5/migrate_id.c` Longshots Ordner) und `conceptId`. Das ist dieselbe Änderung, mit der PS5_Longshot
+selbst die ID gewechselt hat ([9bc1211c](https://github.com/heydemoura/PS5_Longshot/commit/9bc1211c): nur `ps5/sce_sys/param.json`); `eboot.bin` wird ohne ID signiert,
+und `pipeline.py` schreibt `param.json` selbst erst nach dem Signieren. Dass die PS5 die Präfixe `LGSF`/`LGSP` annimmt, ist
+ungeprüft (Upstream hat `LGSH` auf der Konsole geprüft); sonst eine andere ID über die Variable setzen.
+
+Die ID bleibt über Updates gleich: Spielstände, Einstellungen und Shader-Cache bleiben. Ein Fork mit eigener ID übernimmt
+beim ersten Start Spielstände aus seinen alten Ordnern, wenn sein `migrate_id.c` sie kennt (der Fork: `PPSA99198`, dann
+`PPSA99025`); Plus hat keins, dort die Spielstände im Reiter Spielstände kopieren.
+
+Den Namen auf dem Startbildschirm (`titleName` in `param.json`) setzen Build und Deploy auf Spiel und Version:
+`Longshot v0.1.5`, `Longshot ps5.7` (Fork, `v3.0.0-ps5.7`), `Longshot Plus v0.3.2`, `HeyListen <Tag>`. Ein in der Web-UI
+vergebener Name geht vor, `AUTO_TITLE_NAME=false` lässt den des Kits. Die `.nup`
 sucht PS5_HeyListen an denselben Orten wie Longshot (`host/ps5/win32_ps5.c` stammt von dort).
 
 PS5_HeyListen ist **experimentell**: HeyListens Engine mit dem PS5-Port von PS5_Longshot, bisher auf keiner Konsole
