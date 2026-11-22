@@ -235,11 +235,19 @@ und sieht ein Container-Limit nicht.
 
 - **Builder mit `--memory`** (PS5_Longshot ab v0.1.5, [b4e23503](https://github.com/heydemoura/PS5_Longshot/commit/b4e23503)): Übersetzung und Compiles halten sich an
   das Budget, große Funktionen und Chunks werden geteilt, ein Compile startet erst, wenn sein Bedarf passt. `build.sh`
-  gibt `--memory` = `MEMORY_GB`, sonst Container-Limit − 1 GB (mindestens 2), und `--jobs`/`--lift-jobs` nur, wenn
-  `JOBS` bzw. `LONGSHOT_LIFT_JOBS` gesetzt sind. Ob der Builder die Option hat, prüft `build.sh` mit `--cli --help`.
+  gibt `--memory` = `MEMORY_GB`, sonst Container-Limit − 3 GB, unter 10 GB Limit höchstens 4 GB (mindestens 2), und
+  `--jobs`/`--lift-jobs` nur, wenn `JOBS` bzw. `LONGSHOT_LIFT_JOBS` gesetzt sind. Das Budget zählt nur die Prozesse des
+  Builds, das Container-Limit auch Web-UI und Datei-Cache: mit Limit − 1 GB hat der OOM-Killer bei 8 GB Limit einen
+  Prozess der Übersetzung beendet (4 Worker). Unter 5 GB übersetzt Upstream in einem Prozess, ohne Worker. Ob der Builder die Option hat, prüft `build.sh` mit `--cli --help`.
   Weniger Speicher ist laut Upstream nur langsamer, das Ergebnis gleich. Linken und Signieren halten kurz rund 3 GB.
 - **Ältere Builder**: mit Limit setzt `build.sh` `--jobs` (Kerne − 1, höchstens Limit ÷ 1,6 GB) und `--lift-jobs`
   (1 unter 10 GB, sonst (Limit − 4 GB) ÷ 2 GB) selbst.
+
+Beendet der OOM-Killer einen Prozess des Builds, kann der Rest hängen bleiben (beobachtet: der Haupt-`lift.py` weg, seine
+Worker warten ewig, `pipeline.py` wartet auf deren Ausgabe). `build.sh` liest dafür `oom_kill` aus
+`/sys/fs/cgroup/memory.events`: steht nach einem OOM-Kill die CPU-Zeit aller Prozesse des Builders 5 Minuten still, beendet
+es sie und bricht mit einem Hinweis auf `MEMORY_GB` ab. Rechnet der Build weiter (Upstream ersetzt einen beendeten Worker
+selbst), bleibt er unberührt. Nachsehen auf dem Host: `dmesg | grep -i -E 'oom|killed process'`.
 
 Ein abgebrochener Build setzt beim nächsten Lauf fort.
 
@@ -264,7 +272,7 @@ Ein abgebrochener Build setzt beim nächsten Lauf fort.
 | `FORCE_DEPLOY` | `false` | alle Dateien neu hochladen |
 | `PUID` / `PGID` | `99` / `100` | Besitzer des Title-Ordners nach dem Build |
 | `RUN_ON_START` | `false` | beim Containerstart sofort bauen |
-| `MEMORY_GB` | Limit − 1 GB | Speicher für den Build (`--memory`, ab v0.1.5) |
+| `MEMORY_GB` | Limit − 3 GB, unter 10 GB Limit höchstens 4 | Speicher für den Build (`--memory`, ab v0.1.5) |
 | `TITLE_ID` | aus dem Builder | Title-ID von `longshot` fest setzen |
 | `JOBS` | siehe Speicher | Compiler gleichzeitig (`--jobs`) |
 | `LONGSHOT_LIFT_JOBS` | siehe Speicher | Prozesse des Lifts (`--lift-jobs`) |

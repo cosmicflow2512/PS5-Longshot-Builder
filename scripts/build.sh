@@ -215,14 +215,18 @@ budget_mb() {
 }
 # pipeline.py liest den freien Speicher aus /proc/meminfo (MemAvailable) und sieht ein Speicherlimit des Containers nicht.
 # Ab v0.1.5 hat es --memory GB: die Uebersetzung (--lift-jobs) und die Compiles halten sich daran (ps5/builder/README.md,
-# "Memory"; mindestens 2 GB). Mit Limit bekommt es deshalb --memory = Limit - 1 GB, und Upstream verteilt selbst.
+# "Memory"; mindestens 2 GB). Mit Limit bekommt es deshalb --memory aus dem Limit, und Upstream verteilt selbst. Das Budget
+# zaehlt nur die Prozesse des Builds; das Limit des Containers zaehlt mehr (Web-UI, Datei-Cache der geschriebenen C-Dateien).
+# Mit Limit - 1 GB hat der OOM-Killer bei 8 GB Limit einen Prozess der Uebersetzung beendet (4 Worker). Deshalb: Limit - 3 GB,
+# unter 10 GB Limit hoechstens 4 GB, denn unter 5 GB uebersetzt Upstream in einem Prozess, ohne Worker.
 # Aeltere Builder ohne --memory bekommen feste Werte aus dem Limit: --jobs = Budget / 1,6 GB (default_jobs: ein Compiler
 # je 1,6 GB), --lift-jobs 1 unter 10 GB, darueber je 2 GB nach 4 GB fuer den Hauptprozess.
 LIFT_JOBS=${LONGSHOT_LIFT_JOBS:-}
 CC_JOBS=${JOBS:-}
 USER_LIFT_JOBS=$LIFT_JOBS USER_CC_JOBS=$CC_JOBS
 if [[ -z $MEMORY_GB && -n $(cgroup_limit_mb) ]]; then
-    MEMORY_GB=$(( $(cgroup_limit_mb) / 1024 - 1 ))
+    MEMORY_GB=$(( $(cgroup_limit_mb) / 1024 - 3 ))
+    if (( $(cgroup_limit_mb) < 10240 && MEMORY_GB > 4 )); then MEMORY_GB=4; fi
     (( MEMORY_GB >= 2 )) || MEMORY_GB=2
 fi
 if [[ -n $MEMORY_GB && ! $MEMORY_GB =~ ^[0-9]+([.][0-9]+)?$ ]]; then
@@ -435,6 +439,51 @@ if buf:
 '
 }
 
+# OOM-Kills im Container (cgroup v2: memory.events, Zeile oom_kill). Leer, wo es die Datei nicht gibt.
+MEMORY_EVENTS=${MEMORY_EVENTS:-/sys/fs/cgroup/memory.events}
+oom_kills() { awk '$1 == "oom_kill" {print $2}' "$MEMORY_EVENTS" 2>/dev/null || true; }
+# Prozesse des Builders (ihr Programm oder ihre Argumente liegen unter $1): PIDs und ihre CPU-Zeit in Ticks zusammen.
+builder_pids() {
+    local p cmd
+    for p in /proc/[0-9]*; do
+        cmd=$(tr '\0' ' ' < "$p/cmdline" 2>/dev/null) || continue
+        [[ $cmd == *"$1"* ]] && echo "${p#/proc/}"
+    done
+}
+builder_ticks() {
+    local p t=0 v
+    for p in $(builder_pids "$1"); do
+        # (/proc/<pid>/stat: nach "pid (Name) " sind utime und stime das 12. und 13. Feld)
+        v=$(sed 's/^.*) //' "/proc/$p/stat" 2>/dev/null | awk '{print $12 + $13}') || continue
+        t=$(( t + ${v:-0} ))
+    done
+    echo "$t"
+}
+# Waechter: Beendet der OOM-Killer einen Prozess des Builds, kann der Rest haengen bleiben (beobachtet: der Haupt-lift.py weg,
+# seine Worker warten ewig, pipeline.py wartet auf deren Ausgabe). Nach einem OOM-Kill: steht die CPU-Zeit aller
+# Builder-Prozesse STALL_SECS lang still, werden sie beendet. Ein Worker, den Upstream selbst ersetzt, rechnet weiter und
+# bleibt unberuehrt. Exit 0: nichts zu tun; 99: abgebrochen.
+watch_build() {
+    local pid=$1 dir=$2 before=$3 stall=${STALL_SECS:-300} poll=${WATCH_POLL_SECS:-20} now last=-1 still=0 p
+    while kill -0 "$pid" 2>/dev/null; do
+        sleep "$poll"
+        now=$(oom_kills)
+        [[ -n $before && -n $now ]] && (( now > before )) || continue
+        p=$(builder_ticks "$dir")
+        if (( p == last )); then still=$(( still + poll )); else still=0; last=$p; fi
+        if (( still >= stall )); then
+            echo ""
+            echo "FEHLER: der OOM-Killer hat einen Prozess des Builds beendet (memory.events oom_kill $before -> $now), und"
+            echo "  seit $stall s rechnet keiner mehr: der Rest haengt. Die Prozesse des Builders werden beendet."
+            for p in $(builder_pids "$dir"); do kill -TERM "$p" 2>/dev/null || true; done
+            sleep 5
+            for p in $(builder_pids "$dir"); do kill -KILL "$p" 2>/dev/null || true; done
+            return 99
+        fi
+    done
+    return 0
+}
+
 # Das Title muss auf einem eingebundenen Pfad liegen, sonst verschwindet es mit dem Container.
 out_mounted() {
     mkdir -p "$OUT_DIR" 2>/dev/null || true
@@ -475,7 +524,22 @@ stage_build() {
     # shellcheck disable=SC2206
     [[ -n ${EXTRA_ARGS:-} ]] && args+=($EXTRA_ARGS)
     echo "  pipeline.py ${args[*]}"
-    if ! "$run" --cli "${args[@]}" 2>&1 | readable; then
+    local oom_before code=0 watch=0 wpid
+    oom_before=$(oom_kills)
+    "$run" --cli "${args[@]}" 2>&1 | readable &
+    wpid=$!
+    watch_build "$wpid" "$(dirname "$run")/" "$oom_before" || watch=$?
+    # (abgebrochen: auch das Lesende der Pipe beenden; haelt noch ein Kindprozess ausserhalb des Builders die Ausgabe offen,
+    # kaeme sonst nie ein Ende)
+    if (( watch == 99 )); then kill -TERM "$wpid" 2>/dev/null || true; fi
+    wait "$wpid" || code=$?
+    if (( watch == 99 )); then
+        die "Speicher: der Build hat das Limit des Containers ueberschritten (Limit: $(l=$(cgroup_limit_mb); echo "${l:-keins}${l:+ MB}"), --memory ${MEMORY_GB:-auto}). MEMORY_GB kleiner setzen (unter 5: Uebersetzung in einem Prozess) oder das Limit erhoehen. Ein neuer Build setzt fort, wo er war"
+    fi
+    if (( code != 0 )); then
+        if [[ -n $oom_before && $(oom_kills) -gt $oom_before ]]; then
+            echo "  (der OOM-Killer hat waehrend des Builds einen Prozess beendet: memory.events oom_kill $oom_before -> $(oom_kills); MEMORY_GB kleiner setzen)"
+        fi
         die "der Build ist abgebrochen (Meldung oben). Ein neuer Build setzt fort, wo er war (work bleibt unter $WORK)"
     fi
     [[ -f $TITLE/eboot.bin && -f $TITLE/image.bin ]] || die "eboot.bin oder image.bin fehlt nach dem Build in $TITLE"
