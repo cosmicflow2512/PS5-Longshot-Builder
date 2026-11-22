@@ -37,8 +37,9 @@ SAVE_TITLES = ("longshot", "heylisten", "fork")   # (scripts/saves.py TITLES)
 SAVES_DIR = os.path.join(CONFIG, "saves")
 BACKUP_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9]+-[a-z-]+$")
 MODELS = {"pro": "PS5 Pro", "base": "PS5 / PS5 Slim"}
-# Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt
-LANGUAGES = {"de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
+# Die 16 Sprachen des Spiels (host/nn_applet.c von PS5_Longshot), wie build.sh sie in language.txt schreibt. "auto": keine
+# language.txt, das Title folgt der Sprache der Konsole (ab v0.1.4) bzw. behaelt, was im Spielmenue gewaehlt ist
+LANGUAGES = {"auto": "Sprache der Konsole folgen", "de": "Deutsch", "en-US": "English (US)", "en-GB": "English (UK)", "fr": "Français", "fr-CA": "Français (Canada)",
              "it": "Italiano", "es": "Español", "es-419": "Español (Latinoamérica)", "pt-BR": "Português (Brasil)",
              "nl": "Nederlands", "pl": "Polski", "ru": "Русский", "ja": "日本語", "ko": "한국어", "zh-Hans": "简体中文",
              "zh-Hant": "繁體中文"}
@@ -119,7 +120,14 @@ def current_project():
 
 
 def project():
-    return PROJECTS[current_project()]
+    """Das gewaehlte Projekt; title_id: die des letzten Builds ($STATE/title_id, scripts/build.sh), sonst der Standard
+    (PS5_Longshot ab v0.1.5 LGSH00001, bis v0.1.4 PPSA99025). TITLE_ID setzt die von longshot fest."""
+    pr = dict(PROJECTS[current_project()])
+    if not (current_project() == "longshot" and os.environ.get("TITLE_ID")):
+        tid = read_line(os.path.join(pr["state"], "title_id"))
+        if tid and TITLE_ID_RE.match(tid):
+            pr["title_id"] = tid
+    return pr
 
 
 def ref_file():
@@ -136,8 +144,8 @@ def current_model():
 
 
 def current_language():
-    l = read_line(LANGUAGE_FILE) or os.environ.get("LANGUAGE", "de")
-    return l if l in LANGUAGES else ""
+    l = read_line(LANGUAGE_FILE) or os.environ.get("LANGUAGE", "") or "auto"
+    return l if l in LANGUAGES else "auto"
 
 
 def keep_builders():
@@ -168,8 +176,21 @@ def dir_size(path):
     return total
 
 
+def archive_title(name):
+    """Title-ID eines archivierten Builds: aus seiner build-info.json, sonst der Unterordner mit eboot.bin (aeltere Archive)"""
+    d = os.path.join(archive_dir(), name)
+    tid = (read_json(os.path.join(d, "build-info.json")) or {}).get("title_id")
+    if tid and TITLE_ID_RE.match(tid):
+        return tid
+    for tid in sorted(glob.glob(os.path.join(d, "*", "eboot.bin"))):
+        tid = os.path.basename(os.path.dirname(tid))
+        if TITLE_ID_RE.match(tid):
+            return tid
+    return project()["title_id"]
+
+
 def is_archived(name):
-    return bool(NAME_RE.match(name)) and os.path.isfile(os.path.join(archive_dir(), name, project()["title_id"], "eboot.bin"))
+    return bool(NAME_RE.match(name)) and os.path.isfile(os.path.join(archive_dir(), name, archive_title(name), "eboot.bin"))
 
 
 def archived():
@@ -185,6 +206,7 @@ def archived():
         d = os.path.join(base, n)
         info = read_json(os.path.join(d, "build-info.json")) or {}
         out.append({"name": n, "tag": info.get("tag", ""), "model": info.get("model", ""), "time": info.get("time", ""),
+                    "title_id": archive_title(n),
                     "size": dir_size(d), "mtime": os.path.getmtime(d)})
     return sorted(out, key=lambda x: x["mtime"], reverse=True)
 

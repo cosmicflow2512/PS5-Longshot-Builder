@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 # ps5-longshot-builder: baut das PS5-Title des gewaehlten Projekts mit dessen offizieller Builder-AppImage des gewaehlten
 # Releases, ohne Fenster:
-#   longshot   heydemoura/PS5_Longshot      LongshotPS5Builder-<tag>-x86_64.AppImage    PPSA99025
+#   longshot   heydemoura/PS5_Longshot      LongshotPS5Builder-<tag>-x86_64.AppImage    LGSH00001 (bis v0.1.4 PPSA99025)
 #   heylisten  cosmicflow2512/PS5_HeyListen  HeyListenPS5Builder-<tag>-x86_64.AppImage   PPSA99026
 # Das Projekt kommt aus der Web-UI ($CONFIG_DIR/project), sonst aus PROJECT (Standard longshot). Builder, Build-Dateien,
-# Release-Wahl und Stand liegen je Projekt getrennt: longshot wie bisher direkt unter $CONFIG_DIR, heylisten unter
+# Die Title-ID kommt aus kit.json des Builders (set_title). Release-Wahl und Stand liegen je Projekt getrennt: longshot wie bisher direkt unter $CONFIG_DIR, heylisten unter
 # $CONFIG_DIR/heylisten. Konsole und Sprache gelten fuer beide.
 #
 #   build.sh check    neuestes Release gegen den geladenen Builder und das gebaute Title
@@ -28,15 +28,15 @@ PROJECT=${PROJECT:-longshot}
 if [[ -s $CONFIG_DIR/project ]]; then PROJECT=$(tr -d ' \r\n' < "$CONFIG_DIR/project"); fi
 case $PROJECT in
     longshot)
-        REPO=${LONGSHOT_REPO:-heydemoura/PS5_Longshot} NAME=LongshotPS5Builder TITLE_ID=${TITLE_ID:-PPSA99025}
+        REPO=${LONGSHOT_REPO:-heydemoura/PS5_Longshot} NAME=LongshotPS5Builder FIXED_TITLE_ID=${TITLE_ID:-} TITLE_ID=PPSA99025
         STATE=$CONFIG_DIR REF=${LONGSHOT_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot ;;
     heylisten)
         # (PS5_HeyListen: HeyListens Engine mit dem PS5-Port von PS5_Longshot; die Quellen liegen dort unter engine/)
-        REPO=${HEYLISTEN_REPO:-cosmicflow2512/PS5_HeyListen} NAME=HeyListenPS5Builder TITLE_ID=PPSA99026
+        REPO=${HEYLISTEN_REPO:-cosmicflow2512/PS5_HeyListen} NAME=HeyListenPS5Builder FIXED_TITLE_ID="" TITLE_ID=PPSA99026
         STATE=$CONFIG_DIR/heylisten REF=${HEYLISTEN_REF:-latest} SRC_PREFIX="engine/" GAME_NAME=HeyListen ;;
     fork)
         # (der eigene Fork von PS5_Longshot mit den offenen Pull Requests, Title PPSA99198 nach PR #35)
-        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot_Cosi} NAME=LongshotPS5Builder TITLE_ID=PPSA99198
+        REPO=${FORK_REPO:-cosmicflow2512/PS5_Longshot_Cosi} NAME=LongshotPS5Builder FIXED_TITLE_ID="" TITLE_ID=PPSA99198
         STATE=$CONFIG_DIR/fork REF=${FORK_REF:-latest} SRC_PREFIX="" GAME_NAME=Longshot-Fork ;;
     *) printf '\nFEHLER: PROJECT=%s unbekannt (longshot, heylisten oder fork)\n' "$PROJECT" >&2; exit 1 ;;
 esac
@@ -47,9 +47,14 @@ if [[ -s $STATE/ref ]]; then REF=$(tr -d ' \r\n' < "$STATE/ref"); fi
 MODEL=${MODEL:-pro}
 if [[ -s $CONFIG_DIR/model ]]; then MODEL=$(tr -d ' \r\n' < "$CONFIG_DIR/model"); fi
 # Spielsprache: language.txt im Title-Ordner (host/nn_applet.c desired_language: die erste Zeile, die keine Leerzeile und
-# kein Kommentar ist und einen der 16 Codes nennt; fehlt die Datei, Englisch (US)). Leer: keine language.txt.
-LANGUAGE=${LANGUAGE-de}
+# kein Kommentar ist und einen der 16 Codes nennt). Ab v0.1.4 folgt das Title ohne Code der Sprache der Konsole (Englisch,
+# wenn das Spiel sie nicht hat) und laesst sie im Menue (Game language) waehlen; bis v0.1.3 hiess ohne Code Englisch (US).
+# LANGUAGE leer oder "auto": keine language.txt, also der Konsole folgen bzw. was auf der PS5 schon gewaehlt ist.
+LANGUAGE=${LANGUAGE-}
 if [[ -s $CONFIG_DIR/language ]]; then LANGUAGE=$(tr -d ' \r\n' < "$CONFIG_DIR/language"); fi
+[[ $LANGUAGE == auto ]] && LANGUAGE=""
+# Speicher fuer den Build in GB (pipeline.py --memory, ab v0.1.5). Leer: das Speicherlimit des Containers abzueglich 1 GB.
+MEMORY_GB=${MEMORY_GB:-}
 LANGUAGES="en-US en-GB fr fr-CA de it es es-419 pt-BR nl pl ru ja ko zh-Hans zh-Hant"
 BUILDERS="$STATE/builder"
 # Jeder fertige Build wird nach $OUT_DIR/archive/<Projekt>/<Builder-Version>-<Konsole>/ kopiert (ARCHIVE_BUILDS=false:
@@ -64,6 +69,10 @@ if [[ -s $CONFIG_DIR/keep_builders ]]; then KEEP_BUILDERS=$(tr -d ' \r\n' < "$CO
 # build-info.json, aus der title_extras die des Titles schreibt: beim Deploy eines archivierten Builds dessen eigene.
 BUILD_INFO="$STATE/build-info.json"
 WORK="$STATE/work"
+# Title-ID des letzten Builds ($STATE/title_id, von stage_build geschrieben), sonst der Standard des Projekts. Ein Build
+# nimmt die des Kits (set_title kit). TITLE_ID (nur longshot) setzt sie fest.
+if [[ -n $FIXED_TITLE_ID ]]; then TITLE_ID=$FIXED_TITLE_ID
+elif [[ -s $STATE/title_id ]]; then TITLE_ID=$(tr -d ' \r\n' < "$STATE/title_id"); fi
 TITLE="$OUT_DIR/$TITLE_ID"
 CURL=(curl -fsSL --retry 5 --retry-delay 10 --proto '=https')
 CURL_API=("${CURL[@]}" -H 'Accept: application/vnd.github+json')
@@ -173,9 +182,17 @@ open(p, "w", encoding="utf-8", newline="\n").write(json.dumps(j, indent=2, ensur
 PY
 }
 
-# language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c).
+# language.txt in das Title schreiben, im Format, das das Spiel selbst beim ersten Start anlegt (host/nn_applet.c). Ohne
+# feste Sprache keine Datei (eine von frueher geschriebene geht weg): dann bleibt auf der PS5, was dort steht, und eine
+# neue Installation folgt der Konsole. Das Deploy laedt language.txt nur, wenn sie sich seit dem letzten Deploy geaendert
+# hat; eine im Spielmenue gewaehlte Sprache bleibt also, solange hier nichts anderes gewaehlt wird.
 write_language() {
-    [[ -n $LANGUAGE && -d $TITLE ]] || return 0
+    [[ -d $TITLE ]] || return 0
+    if [[ -z $LANGUAGE ]]; then
+        rm -f "$TITLE/language.txt"
+        echo "  Spielsprache: der Konsole folgen (keine language.txt im Title)"
+        return 0
+    fi
     {
         printf '# The game%ss language. Change the line below to one of the codes listed here, save, and start the game again.\n\n%s\n\n' "'" "$LANGUAGE"
         printf '# %s\n' $LANGUAGES
@@ -196,12 +213,21 @@ budget_mb() {
     if [[ -n $limit ]] && (( avail == 0 || limit < avail )); then avail=$limit; fi
     echo "$avail"
 }
-# pipeline.py (default_jobs) nimmt Kerne - 1, hoechstens einen Compiler je 1,6 GB freiem Host-RAM; der Lift (nx2/chunks.py)
-# einen Worker je 2 GB freiem Host-RAM. Ein Speicherlimit des Containers sehen beide nicht. Mit Limit bekommen sie
-# deshalb feste Werte aus dem Limit: --jobs = Budget / 1,6 GB, --lift-jobs 1 unter 10 GB, darueber je 2 GB nach 4 GB fuer
-# den Hauptprozess. Ohne Limit entscheidet Upstream.
+# pipeline.py liest den freien Speicher aus /proc/meminfo (MemAvailable) und sieht ein Speicherlimit des Containers nicht.
+# Ab v0.1.5 hat es --memory GB: die Uebersetzung (--lift-jobs) und die Compiles halten sich daran (ps5/builder/README.md,
+# "Memory"; mindestens 2 GB). Mit Limit bekommt es deshalb --memory = Limit - 1 GB, und Upstream verteilt selbst.
+# Aeltere Builder ohne --memory bekommen feste Werte aus dem Limit: --jobs = Budget / 1,6 GB (default_jobs: ein Compiler
+# je 1,6 GB), --lift-jobs 1 unter 10 GB, darueber je 2 GB nach 4 GB fuer den Hauptprozess.
 LIFT_JOBS=${LONGSHOT_LIFT_JOBS:-}
 CC_JOBS=${JOBS:-}
+USER_LIFT_JOBS=$LIFT_JOBS USER_CC_JOBS=$CC_JOBS
+if [[ -z $MEMORY_GB && -n $(cgroup_limit_mb) ]]; then
+    MEMORY_GB=$(( $(cgroup_limit_mb) / 1024 - 1 ))
+    (( MEMORY_GB >= 2 )) || MEMORY_GB=2
+fi
+if [[ -n $MEMORY_GB && ! $MEMORY_GB =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+    echo "FEHLER: MEMORY_GB=$MEMORY_GB ist keine Zahl" >&2; exit 1
+fi
 if [[ -n $(cgroup_limit_mb) ]]; then
     b=$(budget_mb)
     if [[ -z $CC_JOBS ]]; then
@@ -267,6 +293,23 @@ built_field() {
         "$STATE/build-info.json" "$1" 2>/dev/null || true
 }
 
+# Title-ID des Kits im geladenen Builder (kit.json "title_id", aus ps5/sce_sys/param.json): bei PS5_Longshot bis v0.1.4
+# PPSA99025, ab v0.1.5 LGSH00001 (Upstream 9bc1211c: PPSA99025 ist auch ein anderes Homebrew). Fuer den Build.
+kit_title_id() {
+    local tag kit; tag=$(builder_tag)
+    [[ -n $tag ]] || return 0
+    kit=$(find "$BUILDERS/$tag" -maxdepth 5 -name kit.json -print -quit 2>/dev/null)
+    [[ -n $kit ]] || return 0
+    python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("title_id", ""))' "$kit" 2>/dev/null || true
+}
+set_title_from_kit() {
+    local id=$FIXED_TITLE_ID
+    [[ -n $id ]] || id=$(kit_title_id)
+    [[ -n $id ]] || return 0
+    [[ $id =~ ^[A-Z]{4}[0-9]{5}$ ]] || die "unerwartete Title-ID im Kit: $id"
+    TITLE_ID=$id TITLE="$OUT_DIR/$id"
+}
+
 stage_update() {
     local tag name tmp want ver line checksum
     tag=$(want_tag)
@@ -300,25 +343,28 @@ stage_update() {
         [[ -d $d && $(basename "$d") != "$ver" ]] || continue
         if [[ $KEEP_BUILDERS == true ]]; then echo "  behalten: Builder $(basename "$d")"; else rm -rf "$d"; fi
     done
-    ensure_zbic "$BUILDERS/$ver" "$tag"
-    echo "  Builder: $ver  ($(du -sh "$BUILDERS/$ver" | cut -f1))"
+    check_zbic "$BUILDERS/$ver"
+    echo "  Builder: $ver  ($(du -sh "$BUILDERS/$ver" | cut -f1)), Title-ID des Kits: $(kit_title_id)"
     log "Teile des Builders pruefen (--cli --check, ohne Spiel)"
     "$BUILDERS/$ver/AppRun" --cli --check --work "$WORK" 2>&1 | readable ||
         die "der Builder laeuft in diesem Container nicht (--check)"
 }
 
-# ZBIC: die main einer .nup von Firmware 22+ ist ZBIC-komprimiert. nx2/nup.py entpackt sie mit nx2/zbic.py, das sich
-# third_party/zbic/zbic.so beim ersten Gebrauch mit einem Host-clang baut. Die AppImage (Stand v0.1.0) hat dafuer weder
-# zbic.so noch die Quellen (ps5/builder/make_kit.py nimmt nx2, host und third_party/a64-kit ins Kit, nicht third_party/zbic),
-# und der Build bricht in "Reading the game's program" ab. Hier wird zbic.so aus den Quellen desselben Release-Tags mit
-# gcc gebaut und dorthin gelegt, wo zbic.py sie zuerst sucht (liegt sie dort, baut zbic.py nichts).
-ensure_zbic() {
-    local dir=$1 tag=$2 py zdir tmp f
+# ZBIC: die main einer .nup von Firmware 22+ ist ZBIC-komprimiert; nx2/zbic.py entpackt sie mit third_party/zbic/zbic.so
+# im Kit. Seit v0.1.3 baut PS5_Longshot die Bibliothek mit dem LLVM des Kits in die AppImage, und --check prueft sie mit
+# einem Selbsttest (ps5/builder/zbic_check.c, Commits 46f7bb26 und 318696dc); dann ist hier nichts zu tun. Nur wenn ein
+# Builder keine zbic.so hat (PS5_Longshot v0.1.0, vielleicht aeltere Releases anderer Projekte), wird sie wie frueher aus
+# third_party/zbic desselben Tags mit gcc gebaut. Upstream hat eine mit GCC 11 gebaute als defekt gemessen (sie entpackte
+# keinen ZBIC-Frame); bricht der Build in "Reading the game's program" ab, ein neueres Release waehlen.
+check_zbic() {
+    local dir=$1 tag py zdir tmp f
+    tag=$(basename "$dir")
     py=$(find "$dir" -path '*/src/nx2/zbic.py' -print -quit 2>/dev/null)
-    [[ -n $py ]] || { echo "  (keine nx2/zbic.py im Builder: ZBIC-Hilfe nicht noetig)"; return 0; }
+    [[ -n $py ]] || return 0
     zdir="$(dirname "$(dirname "$py")")/third_party/zbic"
     [[ -f $zdir/zbic.so ]] && return 0
-    echo "  zbic.so fehlt im Builder: baue sie aus third_party/zbic von $REPO@$tag"
+    echo "  WARNUNG: dieser Builder hat keine zbic.so (PS5_Longshot bringt sie ab v0.1.3 mit). Notbau mit gcc; Upstream hat"
+    echo "           eine GCC-gebaute als defekt gemessen. Liest der Build die .nup nicht, ein neueres Release waehlen."
     tmp=$(mktemp -d)
     for f in zstd.c zstd.h zstd_errors.h zbic_api.c; do
         "${CURL[@]}" -o "$tmp/$f" "https://raw.githubusercontent.com/$REPO/$tag/${SRC_PREFIX}third_party/zbic/$f" ||
@@ -401,7 +447,8 @@ stage_build() {
     local run nup game args
     run=$(apprun) || true
     if [[ -z $run ]]; then stage_update; run=$(apprun); fi
-    ensure_zbic "$BUILDERS/$(builder_tag)" "$(builder_tag)"
+    check_zbic "$BUILDERS/$(builder_tag)"
+    set_title_from_kit
     out_mounted
     mkdir -p "$OUT_DIR" "$WORK"
     nup=$(find_nup)
@@ -416,10 +463,18 @@ stage_build() {
         die "keine .nup unter $NUP_DIR gefunden (NUP_FILE setzen) und kein exefs eines frueheren Builds unter $WORK"
     fi
     args=(--game "$game" --out "$OUT_DIR" --model "$MODEL" --work "$WORK")
-    [[ -n $CC_JOBS ]] && args+=(--jobs "$CC_JOBS")
-    [[ -n $LIFT_JOBS ]] && args+=(--lift-jobs "$LIFT_JOBS")
+    if "$run" --cli --help 2>/dev/null | grep -q -- '--memory'; then
+        # (v0.1.5+: Upstream verteilt Uebersetzung und Compiles im Budget selbst; JOBS/LONGSHOT_LIFT_JOBS nur, wenn gesetzt)
+        [[ -n $MEMORY_GB ]] && args+=(--memory "$MEMORY_GB")
+        [[ -n $USER_CC_JOBS ]] && args+=(--jobs "$USER_CC_JOBS")
+        [[ -n $USER_LIFT_JOBS ]] && args+=(--lift-jobs "$USER_LIFT_JOBS")
+    else
+        [[ -n $CC_JOBS ]] && args+=(--jobs "$CC_JOBS")
+        [[ -n $LIFT_JOBS ]] && args+=(--lift-jobs "$LIFT_JOBS")
+    fi
     # shellcheck disable=SC2206
     [[ -n ${EXTRA_ARGS:-} ]] && args+=($EXTRA_ARGS)
+    echo "  pipeline.py ${args[*]}"
     if ! "$run" --cli "${args[@]}" 2>&1 | readable; then
         die "der Build ist abgebrochen (Meldung oben). Ein neuer Build setzt fort, wo er war (work bleibt unter $WORK)"
     fi
@@ -427,14 +482,20 @@ stage_build() {
     write_language
     copy_lossless
     copy_fsr4
-    printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s"}\n' "$(builder_tag)" "$MODEL" "$(date '+%d.%m.%Y %H:%M')" \
-        "$(basename "${nup:-}")" > "$STATE/build-info.json"
+    printf '{"tag": "%s", "model": "%s", "time": "%s", "nup": "%s", "title_id": "%s"}\n' "$(builder_tag)" "$MODEL" \
+        "$(date '+%d.%m.%Y %H:%M')" "$(basename "${nup:-}")" "$TITLE_ID" > "$STATE/build-info.json"
+    echo "$TITLE_ID" > "$STATE/title_id"   # (Deploy, Web-UI, saves.py und titles.py nehmen diese ID)
     title_extras
     if [[ -n ${PUID:-} && -n ${PGID:-} ]]; then
         chown -R "$PUID:$PGID" "$TITLE" 2>/dev/null || echo "  Hinweis: Besitzer von $TITLE nicht auf $PUID:$PGID gesetzt"
     fi
     archive_build
     log "Fertig: $TITLE  ($(builder_tag), $MODEL, $(du -sh "$TITLE" | cut -f1)). Auf die PS5 nach /data/homebrew/$TITLE_ID"
+    if [[ $PROJECT == longshot && $TITLE_ID != PPSA99025 && -f $OUT_DIR/PPSA99025/eboot.bin ]]; then
+        echo "  Hinweis: $OUT_DIR/PPSA99025 ist ein Longshot-Build von v0.1.4 oder aelter. Das neue Title $TITLE_ID uebernimmt"
+        echo "  beim ersten Start Spielstaende, Einstellungen und Shader-Cache aus /data/homebrew/PPSA99025 auf der PS5"
+        echo "  (host/ps5/migrate_id.c). Den alten Ordner danach auf der PS5 (Reiter Titles) und hier von Hand loeschen."
+    fi
 }
 
 # Kopie des fertigen Builds nach $ARCHIVE_DIR/<Builder-Version>-<Konsole>/ (ersetzt einen gleichnamigen), daneben seine
@@ -461,6 +522,14 @@ stage_deploy() {
     if [[ -n $DEPLOY_BUILD && $DEPLOY_BUILD != current ]]; then
         valid_tag "$DEPLOY_BUILD" && [[ $DEPLOY_BUILD != .* ]] || die "deploy_build=$DEPLOY_BUILD ist kein gueltiger Archivname"
         # (Sprache, Lossless.dll, FSR 4 und Name kommen wie beim aktuellen Build in den Ordner, den das Deploy kopiert)
+        # (die Title-ID des archivierten Builds: aus seiner build-info.json, sonst der Unterordner mit eboot.bin)
+        local aid d
+        aid=$(python3 -I -c 'import json,sys; print(json.load(open(sys.argv[1])).get("title_id", ""))' \
+            "$ARCHIVE_DIR/$DEPLOY_BUILD/build-info.json" 2>/dev/null || true)
+        if [[ -z $aid ]]; then
+            for d in "$ARCHIVE_DIR/$DEPLOY_BUILD"/*/eboot.bin; do [[ -f $d ]] && { aid=$(basename "$(dirname "$d")"); break; }; done
+        fi
+        [[ $aid =~ ^[A-Z]{4}[0-9]{5}$ ]] && TITLE_ID=$aid
         TITLE="$ARCHIVE_DIR/$DEPLOY_BUILD/$TITLE_ID" BUILD_INFO="$ARCHIVE_DIR/$DEPLOY_BUILD/build-info.json"
         [[ -f $TITLE/eboot.bin ]] || die "archivierter Build $DEPLOY_BUILD fehlt unter $TITLE (in der Web-UI einen anderen waehlen)"
         log "Auf die PS5: archivierter Build $DEPLOY_BUILD ($TITLE)"
@@ -506,10 +575,11 @@ free_gb() { df -Pk "$1" 2>/dev/null | awk 'NR==2 {print int($4/1024/1024)}'; }
 stage=${1:-all}
 mkdir -p "$CONFIG_DIR" "$STATE" "$HOME"
 IMAGE_REV=${IMAGE_REV:-unbekannt}
-echo "Image: ${IMAGE_REV:0:7}  Projekt: $PROJECT ($REPO, $TITLE_ID)  Ref: $REF  Konsole: $MODEL  Deploy: $DEPLOY_BUILD  Builder behalten: $KEEP_BUILDERS  Sprache: ${LANGUAGE:-Spielstandard}  Compiler: ${CC_JOBS:-auto}  Lift: ${LIFT_JOBS:-auto}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
+echo "Image: ${IMAGE_REV:0:7}  Projekt: $PROJECT ($REPO, $TITLE_ID)  Ref: $REF  Konsole: $MODEL  Deploy: $DEPLOY_BUILD  Builder behalten: $KEEP_BUILDERS  Sprache: ${LANGUAGE:-Konsole}  Speicher: ${MEMORY_GB:-auto}${MEMORY_GB:+ GB}  RAM frei: $(awk '/^MemAvailable:/ {print int($2/1024/1024)}' /proc/meminfo) GB  Container-Limit: $(l=$(cgroup_limit_mb); if [[ -n $l ]]; then echo "$l MB"; else echo keins; fi)"
 echo "Frei: $(free_gb "$CONFIG_DIR") GB unter $CONFIG_DIR, $(free_gb "$OUT_DIR") GB unter $OUT_DIR (Upstream: rund 6 GB fuer den Build, 1 GB fuer den Builder)"
-if [[ $stage == build || $stage == all ]] && (( $(budget_mb) < 8192 )); then
-    echo "Hinweis: weniger als 8 GB Speicher frei bzw. erlaubt. Upstream nennt rund 10 GB, der Lift allein haelt etwa 6 GB."
+if [[ $stage == build || $stage == all ]] && (( $(budget_mb) < 4096 )); then
+    echo "Hinweis: weniger als 4 GB Speicher frei bzw. erlaubt. Ab v0.1.5 baut PS5_Longshot in 2-3 GB (langsamer), Linken"
+    echo "  und Signieren halten aber kurz rund 3 GB (ps5/builder/README.md, Memory). Bis v0.1.4 waren es rund 10 GB."
 fi
 case $stage in
     check) stage_check ;;

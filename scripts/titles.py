@@ -34,9 +34,11 @@ CONFIG = os.environ.get("CONFIG_DIR", "/config")
 STATUS_DIR = os.path.join(CONFIG, "titles")
 STATUS = os.path.join(STATUS_DIR, "status.json")
 ID_RE = re.compile(r"^[A-Z]{4}[0-9]{5}$")
-# Title-ID -> (Projekt, Ordner seines Stands unter /config), wie scripts/build.sh
-PROJECT_OF = {"PPSA99025": ("longshot", CONFIG), "PPSA99026": ("heylisten", os.path.join(CONFIG, "heylisten")),
-              "PPSA99198": ("fork", os.path.join(CONFIG, "fork"))}
+# Title-ID -> (Projekt, Ordner seines Stands unter /config), wie scripts/build.sh: die aktuellen IDs (saves.TITLES, aus
+# $STATE/title_id), dazu die frueheren Standards (Longshot bis v0.1.4: PPSA99025, ab v0.1.5 LGSH00001)
+PROJECT_OF = {tid: (key, saves.STATES[key]) for key, (_, tid) in saves.TITLES.items()}
+for _tid, _key in (("PPSA99025", "longshot"), ("LGSH00001", "longshot"), ("PPSA99026", "heylisten"), ("PPSA99198", "fork")):
+    PROJECT_OF.setdefault(_tid, (_key, saves.STATES[_key]))
 ZELDA_WORDS = ("longshot", "heylisten", "hookshot", "zelda", "ocarina")
 PORT_FILES = ("image.bin", "longshot_env.txt", "hookshot_env.txt", "longshot_options.ini", "hookshot_options.ini")
 say = saves.say
