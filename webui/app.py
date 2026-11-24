@@ -15,6 +15,7 @@ import urllib.request
 
 CONFIG = os.environ.get("CONFIG_DIR", "/config")
 LOGS = os.path.join(CONFIG, "logs")
+LOG_RE = re.compile(r"^[0-9]{8}-[0-9]{6}-[a-z0-9-]{1,40}\.log$")   # (Name eines Laufs: start() schreibt <Zeit>-<Stufe>.log)
 PORT = int(os.environ.get("WEBUI_PORT", "8486"))
 OUT = os.environ.get("OUT_DIR", "/output")
 # Die Projekte, wie scripts/build.sh sie kennt: Repository, Name der Builder-AppImage, Title, eigener Ordner unter /config
@@ -421,6 +422,43 @@ class H(http.server.BaseHTTPRequestHandler):
         if u.path == "/api/titles":
             return self.send(200, json.dumps({"status": read_json(os.path.join(CONFIG, "titles", "status.json")),
                                               "ps5": bool(os.environ.get("PS5_HOST", "").strip())}))
+        if u.path == "/api/logs":
+            # die Laeufe unter /config/logs, neueste zuerst (fuer die Auswahl zum Herunterladen)
+            out = []
+            try:
+                for n in os.listdir(LOGS):
+                    if LOG_RE.match(n):
+                        st = os.stat(os.path.join(LOGS, n))
+                        out.append({"name": n, "size": st.st_size, "mtime": st.st_mtime})
+            except OSError:
+                pass
+            out.sort(key=lambda x: x["name"], reverse=True)
+            cur = os.path.basename(state["log"]) if state["log"] else None
+            return self.send(200, json.dumps({"logs": out[:50], "current": cur}))
+        if u.path == "/api/log.txt":
+            # ein Lauf ganz, als Textdatei: ?name=<Lauf> (nur Namen aus /config/logs), sonst der aktuelle bzw. letzte
+            name = urllib.parse.parse_qs(u.query).get("name", [""])[0]
+            if name:
+                if not LOG_RE.match(name):
+                    return self.send(400, '{"error":"kein gueltiger Name"}')
+                path = os.path.join(LOGS, name)
+            else:
+                path = state["log"] or os.path.realpath(os.path.join(LOGS, "latest.log"))
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read()
+            except OSError:
+                return self.send(404, '{"error":"kein Log"}')
+            fname = "ps5-builder-" + os.path.basename(path)[:-4] + ".txt"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(data)))
+            self.send_header("Cache-Control", "no-store")
+            if urllib.parse.parse_qs(u.query).get("inline", ["0"])[0] != "1":
+                self.send_header("Content-Disposition", 'attachment; filename="%s"' % fname)
+            self.end_headers()
+            self.wfile.write(data)
+            return
         if u.path == "/api/log":
             q = urllib.parse.parse_qs(u.query)
             try:
