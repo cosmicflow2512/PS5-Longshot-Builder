@@ -188,6 +188,11 @@ const $ = s => document.querySelector(s);
 let next = 0, lastLog = null, shownProject = null, lastEnded = undefined, psReady = false, busy = false;
 let savesData = null, titlesData = null, lastStatus = null;
 const NAMES = { longshot: 'Longshot', heylisten: 'HeyListen', fork: 'Longshot-Fork', plus: 'Longshot-Plus' };
+// (Projekt mit seinem Ordner unter /data/homebrew und dem Namen auf der PS5, wo der anders lautet: zwei Titles mit gleichem
+// Namen sind so unterscheidbar)
+function tid(k) { const t = savesData && savesData.status && savesData.status.titles[k]; return (t && t.title_id) || (savesData && savesData.ids && savesData.ids[k]) || '?'; }
+function shown(k) { const t = savesData && savesData.status && savesData.status.titles[k]; return t && t.name && t.name !== NAMES[k] ? t.name : ''; }
+function lbl(k) { return NAMES[k] + ' – ' + tid(k) + (shown(k) ? ' „' + shown(k) + '“' : ''); }
 const PROJ_NAMES = { longshot: 'Projekt Longshot', heylisten: 'Projekt HeyListen', fork: 'Projekt Longshot-Fork', plus: 'Projekt Longshot-Plus' };
 async function api(path, opts) { const r = await fetch(path, opts); return r.json(); }
 function fmt(t) { return t ? new Date(t * 1000).toLocaleTimeString('de-DE') : ''; }
@@ -415,16 +420,17 @@ async function loadSaves() {
       if (st.same && t.present) tag = '<span class="tag same">alle gleich</span>';
       else if (t.present) {
         if (st.newer === k) tag += '<span class="tag new">neuester</span>';
-        if (t.same_as && t.same_as.length) tag += '<span class="tag same">gleich wie ' + t.same_as.map(o => NAMES[o]).join(', ') + '</span>';
+        if (t.same_as && t.same_as.length) tag += '<span class="tag same">gleich wie ' + t.same_as.map(o => esc(lbl(o))).join(', ') + '</span>';
       }
-      d.innerHTML = '<b>' + esc(t.label) + '</b> <span class="msg">' + esc(t.title_id) + '</span>' + tag +
+      const where = '<span class="msg">Ordner ' + esc(t.title_id) + (shown(k) ? ', auf der PS5 „' + esc(shown(k)) + '“' : '') + '</span>';
+      d.innerHTML = '<b>' + esc(t.label) + '</b> ' + where + tag +
         '<small>' + (t.present ? t.files + ' Dateien, ' + Math.max(1, Math.round(t.bytes / 1024)) + ' KB, geändert ' + fmtIso(t.newest)
                              : 'keine Spielstände' + (t.installed ? '' : ' (Title nicht installiert)')) + '</small>';
       box.appendChild(d);
       const e = document.createElement('div'); e.className = 'card';
       const s = t.settings, same = s ? digests[s.digest].filter(o => o !== k) : [];
-      e.innerHTML = '<b>' + esc(t.label) + '</b> <span class="msg">' + esc(s ? s.file : '') + '</span>' +
-        (same.length ? '<span class="tag same">gleich wie ' + same.map(o => NAMES[o]).join(', ') + '</span>' : '') +
+      e.innerHTML = '<b>' + esc(t.label) + '</b> ' + where + ' <span class="msg">' + esc(s ? s.file : '') + '</span>' +
+        (same.length ? '<span class="tag same">gleich wie ' + same.map(o => esc(lbl(o))).join(', ') + '</span>' : '') +
         '<small>' + (s ? Math.max(1, Math.round(s.bytes / 1024)) + ' KB, geändert ' + fmtIso(s.time) +
           (s.prompts !== null && s.prompts !== undefined ? ', Button prompts ' + ({ '0': 'Auto', '1': 'Switch', '2': 'Xbox', '3': 'PS4', '4': 'PS5', '5': 'Steam Deck', '6': 'Tastatur' }[s.prompts] || s.prompts) : '')
           : 'keine Einstellungen auf der PS5' + (t.installed ? ' (noch nichts geändert)' : ' (Title nicht installiert)')) + '</small>';
@@ -432,14 +438,12 @@ async function loadSaves() {
     });
     [box, sbox].forEach(b => { const m = document.createElement('div'); m.className = 'msg'; m.textContent = 'gelesen ' + fmtIso(st.time); b.appendChild(m); });
   }
-  const titles = Object.entries(NAMES);
-  if (!$('#savefrom').options.length) {
-    fillSelect($('#savefrom'), titles); fillSelect($('#saveto'), titles); fillSelect($('#restoreto'), titles);
-    fillSelect($('#setrestoreto'), titles);
-    fillSelect($('#setfrom'), [['longshot', 'Longshot'], ['fork', 'Longshot-Fork'], ['plus', 'Longshot-Plus']]);
-    fillSelect($('#setto'), [['fork', 'Longshot-Fork'], ['plus', 'Longshot-Plus'], ['longshot', 'Longshot']]);
-    $('#saveto').value = 'heylisten';
-  }
+  const titles = Object.keys(NAMES).map(k => [k, lbl(k)]), first = !$('#savefrom').options.length;
+  fillSelect($('#savefrom'), titles); fillSelect($('#saveto'), titles); fillSelect($('#restoreto'), titles);
+  fillSelect($('#setrestoreto'), titles);
+  fillSelect($('#setfrom'), ['longshot', 'fork', 'plus'].map(k => [k, lbl(k)]));
+  fillSelect($('#setto'), ['fork', 'plus', 'longshot'].map(k => [k, lbl(k)]));
+  if (first) $('#saveto').value = 'heylisten';
   if (st && st.newer && document.activeElement !== $('#savefrom') && !$('#savefrom').dataset.touched) {
     $('#savefrom').value = st.newer;
     if ($('#saveto').value === st.newer) $('#saveto').value = Object.keys(NAMES).find(k => k !== st.newer);
@@ -449,10 +453,12 @@ async function loadSaves() {
     b.title + ', gesichert ' + when(b.name) + ' (' + b.files + ' Dateien, Stand ' + fmtIso(b.newest) + ')']) : [['', 'noch keine Backups']]);
   fillSelect($('#setsaved'), (savesData.settings_backups || []).length ? savesData.settings_backups.map(b => [b.name,
     b.title + ', gesichert ' + when(b.name) + ' (' + b.file + ', ' + b.name.split('-').slice(3).join('-') + ')']) : [['', 'noch keine Sicherungen']]);
+  const hn = (k, id) => esc(NAMES[k] + (id ? ' (' + id + ')' : ''));   // (Ordner wie beim Kopieren, aeltere Eintraege ohne)
   $('#savehist').innerHTML = savesData.history.slice(0, 6).map(h => fmtIso(h.time) + ': ' + ({
-    copy: 'Spielstände ' + NAMES[h.from] + ' → ' + NAMES[h.to], restore: 'Backup → ' + NAMES[h.to],
-    'settings-copy': 'Einstellungen ' + NAMES[h.from] + ' → ' + NAMES[h.to], 'settings-restore': 'Einstellungen-Sicherung → ' + NAMES[h.to]
-  }[h.action] || h.action)).join('<br>');
+    copy: 'Spielstände ' + hn(h.from, h.from_id) + ' → ' + hn(h.to, h.to_id), restore: 'Backup → ' + hn(h.to, h.to_id),
+    'settings-copy': 'Einstellungen ' + hn(h.from, h.from_id) + ' → ' + hn(h.to, h.to_id),
+    'settings-restore': 'Einstellungen-Sicherung → ' + hn(h.to, h.to_id)
+  }[h.action] || esc(h.action))).join('<br>');
 }
 $('#savefrom').onchange = () => { $('#savefrom').dataset.touched = '1'; };
 $('#savesread').onclick = () => post('/api/run?stage=saves-status');
@@ -463,26 +469,26 @@ $('#savecopy').onclick = async () => {
   let warn = '';
   if (st && st.newer && st.newer === t) warn = '\n\nACHTUNG: das Ziel ist nach Dateidatum NEUER als die Quelle.';
   if (!st) warn = '\n\nDie Spielstände wurden noch nicht gelesen.';
-  if (!confirm('Spielstände von ' + NAMES[f] + ' nach ' + NAMES[t] + ' kopieren?\n\nDas Ziel wird vorher gesichert und danach mit der Quelle gespiegelt. Beide Spiele müssen auf der PS5 beendet sein.' + warn)) return;
+  if (!confirm('Spielstände von ' + lbl(f) + ' nach ' + lbl(t) + ' kopieren?\n\nDas Ziel wird vorher gesichert und danach mit der Quelle gespiegelt. Beide Spiele müssen auf der PS5 beendet sein.' + warn)) return;
   post('/api/saves/copy?from=' + f + '&to=' + t);
 };
 $('#saverestore').onclick = () => {
   const b = $('#savebackup').value, t = $('#restoreto').value;
   if (!b) return;
-  if (!confirm('Backup ' + b + ' nach ' + NAMES[t] + ' zurückspielen?\n\nDer jetzige Stand dort wird vorher gesichert.')) return;
+  if (!confirm('Backup ' + b + ' nach ' + lbl(t) + ' zurückspielen?\n\nDer jetzige Stand dort wird vorher gesichert.')) return;
   post('/api/saves/restore?backup=' + encodeURIComponent(b) + '&to=' + t);
 };
 $('#setbackup').onclick = () => post('/api/run?stage=settings-backup');
 $('#setcopy').onclick = () => {
   const f = $('#setfrom').value, t = $('#setto').value;
   if (f === t) { alert('Quelle und Ziel müssen verschieden sein'); return; }
-  if (!confirm('Einstellungen von ' + NAMES[f] + ' nach ' + NAMES[t] + ' kopieren?\n\nDie Einstellungen des Ziels werden vorher gesichert. Beide Spiele müssen beendet sein.')) return;
+  if (!confirm('Einstellungen von ' + lbl(f) + ' nach ' + lbl(t) + ' kopieren?\n\nDie Einstellungen des Ziels werden vorher gesichert. Beide Spiele müssen beendet sein.')) return;
   post('/api/settings/copy?from=' + f + '&to=' + t);
 };
 $('#setrestore').onclick = () => {
   const b = $('#setsaved').value, t = $('#setrestoreto').value;
   if (!b) return;
-  if (!confirm('Einstellungen ' + b + ' nach ' + NAMES[t] + ' zurückspielen?\n\nDie jetzigen Einstellungen dort werden vorher gesichert. Das Spiel muss beendet sein.')) return;
+  if (!confirm('Einstellungen ' + b + ' nach ' + lbl(t) + ' zurückspielen?\n\nDie jetzigen Einstellungen dort werden vorher gesichert. Das Spiel muss beendet sein.')) return;
   post('/api/settings/restore?backup=' + encodeURIComponent(b) + '&to=' + t);
 };
 
@@ -498,7 +504,7 @@ async function loadTitles() {
     const d = document.createElement('div'); d.className = 'card';
     const origin = t.tag ? esc(t.repo || '') + ' ' + esc(t.tag) + (t.model ? ', ' + esc(t.model) : '') + ', gebaut ' + esc(t.built || '?')
       : 'Herkunft unbekannt' + (t.project ? ' (Title-ID von ' + PROJ_NAMES[t.project] + ')' : '') + (t.eboot_time ? ', eboot.bin vom ' + fmtIso(t.eboot_time) : '');
-    d.innerHTML = '<b>' + esc(t.name || '(ohne Namen)') + '</b> <span class="msg">' + esc(t.id) + '</span>' +
+    d.innerHTML = '<b>' + esc(t.name || '(ohne Namen)') + '</b> <span class="msg">Ordner ' + esc(t.id) + '</span>' +
       (count[(t.name || '').toLowerCase()] > 1 ? '<span class="tag warn">Name doppelt</span>' : '') +
       (t.eboot ? '' : '<span class="tag warn">ohne eboot.bin</span>') +
       '<small>' + origin + '</small><small>' + Math.round(t.bytes / 1048576) + ' MB, ' +
