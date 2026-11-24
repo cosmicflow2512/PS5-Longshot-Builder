@@ -12,6 +12,8 @@
   header h1 { font-size:17px; margin:0; font-weight:600; white-space:nowrap; }
   header select { width:auto; min-width:260px; max-width:100%; }
   header .sp { flex:1; }
+  select:disabled { opacity:.45; cursor:not-allowed; }
+  #lockmsg { display:none; color:var(--warn); font-size:12px; flex-basis:100%; }
   #state { font-weight:600; }
   .bar { position:sticky; top:0; z-index:5; background:var(--bg); border-bottom:1px solid var(--line); padding:10px 20px; display:grid; gap:8px; }
   .acts { display:flex; gap:8px; flex-wrap:wrap; }
@@ -70,6 +72,7 @@
   <span id="sub" class="msg" style="margin:0">&hellip;</span>
   <span class="sp"></span>
   <span id="state">&hellip;</span>
+  <span id="lockmsg">Projekt, Release, Konsole und Sprache sind gesperrt, solange ein Lauf läuft. Wechseln geht, wenn er fertig ist oder mit „Abbrechen“ beendet wurde.</span>
 </header>
 <div class="bar">
   <div class="acts">
@@ -225,6 +228,7 @@ async function refresh() {
     ['#savesread', '#savecopy', '#saverestore', '#setbackup', '#setcopy', '#setrestore', '#titlesread']
       .forEach(id => $(id).disabled = s.running || !s.ps5);
     $('#deploybtn').disabled = s.running || !s.ps5;
+    $('#lockmsg').style.display = s.running ? 'block' : 'none';
     $('#rel').disabled = s.running; $('#project').disabled = s.running; $('#model').disabled = s.running; $('#lang').disabled = s.running;
     $('#stop').disabled = !s.running;
     $('#sub').textContent = s.repo + ' → ' + s.title_id;
