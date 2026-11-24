@@ -40,6 +40,13 @@
   dt { color:var(--dim); } dd { margin:0; word-break:break-all; }
   .ok { color:var(--acc); } .bad { color:var(--err); } .run { color:var(--warn); }
   .logbox { position:sticky; top:120px; align-self:start; }
+  .logbar { display:grid; grid-template-columns: 1fr auto auto; gap:6px; margin-bottom:8px; }
+  .logbar a, .logbar button { width:auto; padding:6px 10px; font-size:13px; text-align:center; }
+  .logbar a { display:flex; align-items:center; justify-content:center; background:#232833; color:var(--text); border:1px solid var(--line); border-radius:6px; text-decoration:none; }
+  #copybox { display:none; position:fixed; inset:0; z-index:20; background:rgba(0,0,0,.7); padding:16px; }
+  #copybox.on { display:grid; grid-template-rows:auto 1fr auto; gap:8px; }
+  #copybox textarea { width:100%; height:100%; background:#0b0d10; color:var(--text); border:1px solid var(--line); border-radius:6px; font:12px/1.4 ui-monospace, monospace; }
+  #copybox .row { display:flex; gap:8px; } #copybox .row button { width:auto; }
   pre { margin:0; height:calc(100vh - 170px); min-height:300px; overflow:auto; background:#0b0d10; border-radius:6px; padding:10px; font:12px/1.4 ui-monospace, monospace; white-space:pre-wrap; word-break:break-all; }
   select { width:100%; background:#232833; color:var(--text); border:1px solid var(--line); border-radius:6px; padding:8px; font:inherit; }
   .two { display:grid; grid-template-columns: 1fr 1fr; gap:10px; }
@@ -163,8 +170,18 @@
     </div>
   </div>
   <section class="logbox">
+    <div class="logbar">
+      <select id="logsel" title="Welcher Lauf"><option value="">aktueller Lauf</option></select>
+      <a id="logdl" href="/api/log.txt" download>Herunterladen</a>
+      <button id="logcopy" title="ganzen Lauf in die Zwischenablage">Kopieren</button>
+    </div>
     <pre id="log"></pre>
   </section>
+  <div id="copybox">
+    <div class="msg" id="copymsg">Lade &hellip;</div>
+    <textarea id="copytext" readonly></textarea>
+    <div class="row"><button class="primary" id="copydo">In die Zwischenablage</button><button id="copyclose">Schließen</button></div>
+  </div>
 </main>
 <script>
 const $ = s => document.querySelector(s);
@@ -265,7 +282,7 @@ async function refresh() {
       if (!first && !s.running && ['check', 'update', 'all'].includes(s.stage)) loadReleases(true);
     }
     if (busy !== s.running || psReady !== !!s.ps5) { busy = s.running; psReady = !!s.ps5; loadTitles(); }
-    if (s.log !== lastLog) { lastLog = s.log; next = 0; $('#log').textContent = ''; }
+    if (s.log !== lastLog) { lastLog = s.log; next = 0; $('#log').textContent = ''; loadLogs(); }
   } catch (e) { $('#state').textContent = 'keine Verbindung'; }
   try {
     const l = await api('/api/log?from=' + next);
@@ -281,6 +298,40 @@ async function refresh() {
   } catch (e) {}
 }
 document.querySelectorAll('button[data-stage]').forEach(b => b.onclick = () => post('/api/run?stage=' + b.dataset.stage));
+
+// ---- Log: ganzen Lauf herunterladen oder kopieren ----
+function logUrl(inline) { const n = $('#logsel').value; return '/api/log.txt?' + (n ? 'name=' + encodeURIComponent(n) + '&' : '') + (inline ? 'inline=1' : ''); }
+async function loadLogs() {
+  try {
+    const r = await api('/api/logs'), sel = $('#logsel'), keep = sel.value;
+    const kb = n => n > 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round(n / 1024)) + ' KB';
+    const when = n => n.slice(6, 8) + '.' + n.slice(4, 6) + '. ' + n.slice(9, 11) + ':' + n.slice(11, 13);
+    fillSelect(sel, [['', 'aktueller Lauf']].concat(r.logs.map(l => [l.name, when(l.name) + ' ' + l.name.slice(16, -4) + ' (' + kb(l.size) + ')'])));
+    if ([...sel.options].some(o => o.value === keep)) sel.value = keep;
+  } catch (e) {}
+  $('#logdl').href = logUrl(false);
+}
+$('#logsel').onchange = () => { $('#logdl').href = logUrl(false); };
+$('#logsel').onfocus = loadLogs;
+// (http im LAN: Safari gibt navigator.clipboard dort nicht frei. Darum erst laden und markiert zeigen, dann kopiert ein
+// eigener Tipp synchron per execCommand; klappt das nicht, ist der Text markiert und laesst sich von Hand kopieren)
+$('#logcopy').onclick = async () => {
+  const box = $('#copybox'), ta = $('#copytext');
+  box.classList.add('on'); $('#copymsg').textContent = 'Lade …'; ta.value = '';
+  try {
+    const r = await fetch(logUrl(true)); ta.value = await r.text();
+    $('#copymsg').textContent = (ta.value.length / 1024).toFixed(0) + ' KB geladen. „In die Zwischenablage“ tippen.';
+  } catch (e) { $('#copymsg').textContent = 'Laden fehlgeschlagen: ' + e; }
+};
+$('#copydo').onclick = () => {
+  const ta = $('#copytext');
+  ta.focus(); ta.select(); ta.setSelectionRange(0, ta.value.length);
+  let ok = false;
+  try { ok = document.execCommand('copy'); } catch (e) {}
+  $('#copymsg').textContent = ok ? 'Kopiert.' : 'Automatisch kopieren ging nicht: Text ist markiert, lange tippen und „Kopieren“ wählen.';
+};
+$('#copyclose').onclick = () => { $('#copybox').classList.remove('on'); $('#copytext').value = ''; };
+loadLogs();
 
 // ---- Release, Projekt, Konsole, Sprache ----
 async function loadReleases(force) {
