@@ -61,7 +61,9 @@ def _title_id(key, default):
     return default
 
 
-TITLES = {"longshot": ("Longshot", _title_id("longshot", "PPSA99025")),
+# (longshot ohne Build in diesem Container: LGSH00001, die ID ab v0.1.5; PPSA99025 hat nur noch ein v0.1.4-Build, und der
+# schreibt seine ID nach $STATE/title_id)
+TITLES = {"longshot": ("Longshot", _title_id("longshot", "LGSH00001")),
           "heylisten": ("HeyListen", _title_id("heylisten", "PPSA99026")),
           "fork": ("Longshot-Fork", _title_id("fork", "LGSF00002")),
           "plus": ("Longshot-Plus", _title_id("plus", "LGSP00003"))}

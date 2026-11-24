@@ -21,7 +21,7 @@ OUT = os.environ.get("OUT_DIR", "/output")
 # Die Projekte, wie scripts/build.sh sie kennt: Repository, Name der Builder-AppImage, Title, eigener Ordner unter /config
 PROJECTS = {
     "longshot": {"label": "Longshot (heydemoura/PS5_Longshot)", "repo": os.environ.get("LONGSHOT_REPO", "heydemoura/PS5_Longshot"),
-                 "appimage": "LongshotPS5Builder", "title_id": os.environ.get("TITLE_ID", "PPSA99025"), "state": CONFIG,
+                 "appimage": "LongshotPS5Builder", "title_id": os.environ.get("TITLE_ID", "LGSH00001"), "state": CONFIG,
                  "ref_env": "LONGSHOT_REF"},
     "heylisten": {"label": "HeyListen (cosmicflow2512/PS5_HeyListen, experimentell)",
                   "repo": os.environ.get("HEYLISTEN_REPO", "cosmicflow2512/PS5_HeyListen"), "appimage": "HeyListenPS5Builder",
