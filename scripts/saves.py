@@ -458,7 +458,8 @@ def cmd_status():
     for key, (label, tid) in TITLES.items():
         installed = _has_size(f, title_dir(key) + "/eboot.bin")
         files = tree(f, save_dir(key))
-        entry = {"label": label, "title_id": tid, "installed": installed, "path": save_dir(key), "present": bool(files)}
+        entry = {"label": label, "title_id": tid, "installed": installed, "path": save_dir(key), "present": bool(files),
+                 "name": shown_name(read_bytes(f, title_dir(key) + "/sce_sys/param.json"))}
         opt = read_bytes(f, options_path(key))
         entry["settings"] = {"file": OPTIONS[key], "bytes": len(opt), "time": iso(mdtm(f, options_path(key)) or 0) or None,
                              "digest": hashlib.sha1(opt).hexdigest(),
@@ -475,7 +476,7 @@ def cmd_status():
                 download(f, save_dir(key), files, snap)
                 entry["digest"] = digest_dir(snap)
         result["titles"][key] = entry
-        say("%-10s %s: %s" % (label, tid, "%d Dateien, %d KB, zuletzt geaendert %s (%s)" % (
+        say("%-10s %s%s: %s" % (label, tid, ' "%s"' % entry["name"] if entry["name"] else "", "%d Dateien, %d KB, zuletzt geaendert %s (%s)" % (
             entry["files"], entry["bytes"] >> 10, entry["newest"] or "?", entry["newest_file"]) if files else
             ("keine Spielstaende" + ("" if installed else " (Title nicht installiert)"))))
     f.quit()
@@ -498,6 +499,16 @@ def cmd_status():
             say("-> neuester (nach Dateizeit): %s" % (TITLES[result["newer"]][0] if result["newer"] else "unklar, gleiche Zeit"))
     with open(STATUS, "w") as fh:
         json.dump(result, fh, indent=1)
+
+
+def shown_name(data):
+    """titleName aus param.json (wie titles.py title_name): der Name auf dem Startbildschirm der PS5; None ohne"""
+    try:
+        lp = json.loads(data.decode("utf-8-sig")).get("localizedParameters") or {}
+    except (AttributeError, ValueError, UnicodeDecodeError):
+        return None
+    first = (lp.get(lp.get("defaultLanguage") or "en-US") or {}).get("titleName")
+    return first or next((v.get("titleName") for v in lp.values() if isinstance(v, dict) and v.get("titleName")), None)
 
 
 def _has_size(f, path):
@@ -529,7 +540,8 @@ def cmd_copy(src, dst):
     digest = digest_dir(tmp)
     shutil.rmtree(tmp, ignore_errors=True)
     f.quit()
-    remember({"time": iso(time.time()), "action": "copy", "from": src, "to": dst, "files": len(files), "backup": saved,
+    remember({"time": iso(time.time()), "action": "copy", "from": src, "to": dst,
+              "from_id": TITLES[src][1], "to_id": TITLES[dst][1], "files": len(files), "backup": saved,
               "digest": digest})
     say("fertig: %s hat jetzt die Spielstaende von %s%s" % (TITLES[dst][0], TITLES[src][0],
                                                             " (vorher gesichert: %s)" % saved if saved else ""))
@@ -546,7 +558,8 @@ def cmd_restore(name, dst):
     saved = backup(f, dst, "vor-wiederherstellen")
     mirror(f, src_dir, dst)
     f.quit()
-    remember({"time": iso(time.time()), "action": "restore", "backup_used": name, "to": dst, "backup": saved})
+    remember({"time": iso(time.time()), "action": "restore", "backup_used": name, "to": dst,
+              "to_id": TITLES[dst][1], "backup": saved})
     say("fertig: %s hat jetzt den Stand aus %s" % (TITLES[dst][0], name))
 
 
@@ -608,7 +621,8 @@ def cmd_settings_copy(src, dst):
     say("Einstellungen %s -> %s (%d Bytes)" % (TITLES[src][0], TITLES[dst][0], len(data)))
     saved = put_settings(f, data, dst, "von " + TITLES[src][0])
     f.quit()
-    remember({"time": iso(time.time()), "action": "settings-copy", "from": src, "to": dst, "backup": saved})
+    remember({"time": iso(time.time()), "action": "settings-copy", "from": src, "to": dst,
+              "from_id": TITLES[src][1], "to_id": TITLES[dst][1], "backup": saved})
 
 
 def cmd_settings_restore(name, dst):
@@ -625,7 +639,8 @@ def cmd_settings_restore(name, dst):
     say("Einstellungen %s -> %s" % (name, TITLES[dst][0]))
     saved = put_settings(f, data, dst, "aus " + name)
     f.quit()
-    remember({"time": iso(time.time()), "action": "settings-restore", "backup_used": name, "to": dst, "backup": saved})
+    remember({"time": iso(time.time()), "action": "settings-restore", "backup_used": name, "to": dst,
+              "to_id": TITLES[dst][1], "backup": saved})
 
 
 def backups():

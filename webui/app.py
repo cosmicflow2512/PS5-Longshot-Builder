@@ -362,6 +362,16 @@ def status():
     return s
 
 
+def title_id_of(key):
+    """die Title-ID (= Ordner unter /data/homebrew) des Projekts key, wie project() und scripts/saves.py _title_id"""
+    pr = PROJECTS[key]
+    fixed = os.environ.get(pr["id_env"]) or (os.environ.get("TITLE_ID") if key == "longshot" else None)
+    if fixed and TITLE_ID_RE.match(fixed):
+        return fixed
+    tid = read_line(os.path.join(pr["state"], "title_id"))
+    return tid if tid and TITLE_ID_RE.match(tid) else pr["title_id"]
+
+
 def saves_info():
     """Stand der Spielstaende (scripts/saves.py status), die Backups und der Verlauf der Kopien"""
     try:
@@ -374,7 +384,7 @@ def saves_info():
     except (OSError, ValueError, subprocess.TimeoutExpired):
         backups, settings = [], []
     return {"status": read_json(os.path.join(SAVES_DIR, "status.json")), "backups": backups, "settings_backups": settings,
-            "options_files": OPTIONS_FILE,
+            "options_files": OPTIONS_FILE, "ids": {k: title_id_of(k) for k in SAVE_TITLES},
             "history": (read_json(os.path.join(SAVES_DIR, "history.json")) or [])[:10],
             "ps5": bool(os.environ.get("PS5_HOST", "").strip())}
 
